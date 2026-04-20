@@ -26,18 +26,72 @@ function getWeatherIcon(code) {
   return "☀️";
 }
 
+// ─── SMART GEOCODER ───────────────────────────────────────────────────────────
+// Accepts anything: "broadway", "The Leonard", "200 central park west", coords
+// Returns { street, borough, neighborhood, label, lat, lng }
+
+async function geocodeInput(input) {
+  const q = input.trim();
+  // Always append NYC to help geocoder
+  const search = q.toLowerCase().includes("new york") || q.toLowerCase().includes("nyc") ? q : `${q}, New York City`;
+  const url = `https://geosearch.planninglabs.nyc/v2/search?text=${encodeURIComponent(search)}&size=1&layers=address,street,venue`;
+  const res = await fetch(url);
+  const data = await res.json();
+  const feat = data.features?.[0];
+  if (!feat) throw new Error(`Could not find "${input}" in NYC. Try an address or street name.`);
+  const p = feat.properties;
+  const [lng, lat] = feat.geometry.coordinates;
+  return {
+    street: p.street || p.name || p.label?.split(",")[0] || q.toUpperCase(),
+    borough: p.borough || p.county || "",
+    neighborhood: p.neighbourhood || p.locality || "",
+    label: p.label || q,
+    lat,
+    lng,
+  };
+}
+
 async function reverseGeocode(lat, lng) {
-  const res = await fetch(`${GEO_SEARCH}?point.lat=${lat}&point.lon=${lng}&size=1`);
+  const url = `${GEO_SEARCH}?point.lat=${lat}&point.lon=${lng}&size=1`;
+  const res = await fetch(url);
   const data = await res.json();
   const feat = data.features?.[0];
   if (!feat) throw new Error("Could not determine your street");
   const p = feat.properties;
-  return { street: p.street || p.name || "", borough: p.borough || "", neighborhood: p.neighbourhood || p.locality || "", label: p.label || "", houseNumber: p.housenumber || "" };
+  return {
+    street: p.street || p.name || "",
+    borough: p.borough || "",
+    neighborhood: p.neighbourhood || p.locality || "",
+    label: p.label || "",
+    lat,
+    lng,
+  };
+}
+
+// Normalize street name for DOT dataset queries
+// Handles: "Broadway" → "BROADWAY", "W 72nd St" → "WEST 72 STREET", etc.
+function normalizeStreetName(street) {
+  return street.toUpperCase()
+    .replace(/\bST\.?$/, "STREET")
+    .replace(/\bAVE\.?$/, "AVENUE")
+    .replace(/\bBLVD\.?$/, "BOULEVARD")
+    .replace(/\bDR\.?$/, "DRIVE")
+    .replace(/\bPL\.?$/, "PLACE")
+    .replace(/\bRD\.?$/, "ROAD")
+    .replace(/\bW\b/, "WEST")
+    .replace(/\bE\b/, "EAST")
+    .replace(/\bN\b/, "NORTH")
+    .replace(/\bS\b/, "SOUTH")
+    .replace(/(\d+)(ST|ND|RD|TH)\b/, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function fetchStreetCleaning(street) {
-  const name = street.trim().toUpperCase();
-  const url = `${SOCRATA}/xswq-wnv9.json?$where=upper(street)=%27${encodeURIComponent(name)}%27 AND upper(description) LIKE %27%25STREET CLEANING%25%27&$limit=30`;
+  const name = normalizeStreetName(street);
+  // Use LIKE so partial matches work (e.g. "BROADWAY" matches "BROADWAY" in dataset)
+  const encoded = encodeURIComponent(name);
+  const url = `${SOCRATA}/xswq-wnv9.json?$where=upper(street) LIKE '%25${encoded}%25' AND upper(description) LIKE '%25NO PARKING%25'&$limit=50`;
   try { const r = await fetch(url); return r.ok ? r.json() : []; } catch { return []; }
 }
 
@@ -221,7 +275,7 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
-export default function StreetParkInfo() {
+export default function Street Park Info() {
   const [phase, setPhase] = useState("location");
   const [locationData, setLocationData] = useState(null);
   const [coords, setCoords] = useState(null);
@@ -262,7 +316,7 @@ export default function StreetParkInfo() {
 
   const requestGPS = useCallback(() => {
     setError(null);
-    if (!navigator.geolocation) { setError("Geolocation not supported."); return; }
+    if (!navigator.geolocation) { setError("Geolocation not supported. Enter your street manually."); return; }
     setPhase("loading");
     navigator.geolocation.getCurrentPosition(
       async ({ coords: { latitude, longitude } }) => {
@@ -273,19 +327,33 @@ export default function StreetParkInfo() {
           await loadAllData(loc.street, loc.borough, latitude, longitude);
         } catch (e) { setError(e.message); setPhase("location"); }
       },
-      () => { setError("Location denied. Enter your street manually."); setPhase("location"); },
-      { timeout: 10000 }
+      (err) => {
+        // Give a helpful message based on why it failed
+        if (err.code === 1) {
+          setError("Location access was blocked. Please allow location in your browser settings, or enter your street manually below.");
+        } else {
+          setError("Could not get your location. Enter your street manually.");
+        }
+        setPhase("location");
+      },
+      { timeout: 10000, enableHighAccuracy: true }
     );
   }, [loadAllData]);
 
   const handleManual = useCallback(async () => {
-    const street = manualStreet.trim();
-    if (!street) return;
+    const input = manualStreet.trim();
+    if (!input) return;
     setPhase("loading"); setError(null);
-    const lat = 40.7128, lng = -74.006;
-    setCoords({ lat, lng });
-    setLocationData({ street: street.toUpperCase(), borough: "", neighborhood: "", label: street });
-    await loadAllData(street, "", lat, lng);
+    try {
+      // Geocode whatever they typed — building name, address, street, anything
+      const loc = await geocodeInput(input);
+      setCoords({ lat: loc.lat, lng: loc.lng });
+      setLocationData(loc);
+      await loadAllData(loc.street, loc.borough, loc.lat, loc.lng);
+    } catch (e) {
+      setError(e.message);
+      setPhase("location");
+    }
   }, [manualStreet, loadAllData]);
 
   const handleSignup = async () => {
@@ -354,7 +422,7 @@ export default function StreetParkInfo() {
           <button className="loc-btn" onClick={requestGPS}>📍 USE MY LOCATION</button>
           <div className="loc-or">— or enter manually —</div>
           <div className="manual-row">
-            <input className="manual-input" type="text" placeholder="e.g. AMSTERDAM AVE" value={manualStreet} onChange={e => setManualStreet(e.target.value)} onKeyDown={e => e.key === "Enter" && handleManual()} />
+            <input className="manual-input" type="text" placeholder="broadway, 200 5th ave, Skyline Tower…" value={manualStreet} onChange={e => setManualStreet(e.target.value)} onKeyDown={e => e.key === "Enter" && handleManual()} />
             <button className="manual-btn" onClick={handleManual}>GO →</button>
           </div>
         </div>
@@ -363,7 +431,7 @@ export default function StreetParkInfo() {
       {phase === "loading" && (
         <div className="loading-screen">
           <div className="spinner-big" />
-          <div className="loading-label">Scanning NYC databases…</div>
+          <div className="loading-label">Looking up your location…</div>
         </div>
       )}
 
