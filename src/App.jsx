@@ -38,9 +38,11 @@ async function reverseGeocode(lat, lng) {
 }
 
 // ─── API CALLS (all proxied through our backend — no CORS issues) ─────────────
-async function getCleaning(street) {
+async function getCleaning(street, lat, lng) {
   try {
-    const r = await fetch(`${API}/api/cleaning?street=${encodeURIComponent(street)}`);
+    const params = new URLSearchParams({ street });
+    if (lat && lng) { params.set("lat", lat); params.set("lng", lng); }
+    const r = await fetch(`${API}/api/cleaning?${params}`);
     return r.ok ? r.json() : [];
   } catch { return []; }
 }
@@ -231,7 +233,7 @@ export default function StreetParkInfo() {
     setPhase("loading");
 
     const [c, f, ev, wx, a] = await Promise.allSettled([
-      getCleaning(loc.street),
+      getCleaning(loc.street, loc.lat, loc.lng),
       getFilms(loc.street),
       getEvents(loc.borough),
       getWeather(loc.lat, loc.lng),
