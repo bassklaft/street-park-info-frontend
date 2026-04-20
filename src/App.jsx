@@ -221,7 +221,7 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
-export default function Street Park Info() {
+export default function StreetParkInfo() {
   const [phase, setPhase] = useState("location");
   const [locationData, setLocationData] = useState(null);
   const [coords, setCoords] = useState(null);
