@@ -338,7 +338,10 @@ export default function App() {
     setPhase("loading");
     const saved = Storage.saveSearch(loc);
     if (saved) setSavedSearches(saved);
-    const streets = loc.isPark && loc.parkStreets?.length ? loc.parkStreets : loc.isZip && loc.zipStreets?.length ? loc.zipStreets : [loc.street];
+    const streets = 
+      loc.isPark && loc.parkStreets?.length ? loc.parkStreets : 
+      (loc.isZip || loc.isNeighborhood) && loc.zipStreets?.length ? loc.zipStreets :
+      [loc.street];
     const [cR, fR, evR, wxR, aR] = await Promise.allSettled([
       loadCleaningForStreets(streets, loc.lat, loc.lng),
       getFilms(loc.street), getEvents(loc.borough),
@@ -427,7 +430,7 @@ export default function App() {
   const wxNow        = weather?.current;
   const wxDaily      = weather?.daily;
   const severeNow    = wxNow?.weather_code && SEVERE.has(wxNow.weather_code);
-  const isMulti      = locData?.isPark || locData?.isZip;
+  const isMulti      = locData?.isPark || locData?.isZip || locData?.isNeighborhood;
   const histPins     = showHistory && isSubscribed ? savedSearches.filter(s => s.label !== (locData?.label || locData?.street)) : [];
   const remaining    = Math.max(0, 2 - searchCount);
 
@@ -627,7 +630,7 @@ export default function App() {
               {/* Cleaning */}
               <div className="sec">
                 <div className="sec-hd">🧹 Street Cleaning {cleaning.length > 0 && <span className="badge">{cleaning.length}</span>}</div>
-                {isMulti && <div className="sec-note">Showing {locData.isPark ? "all bordering streets" : "streets in this zip"}</div>}
+                {isMulti && <div className="sec-note">Showing {locData.isPark ? "all bordering streets" : locData.isNeighborhood ? "all streets in this neighborhood" : "streets in this zip"}</div>}
                 {cleaning.length === 0 ? <div className="empty">No street cleaning regulations found for this block.</div>
                   : cleaning.map((c, i) => (
                     <div key={i} className={`clean-card ${c.days?.includes(today) ? "today" : ""}`}>
@@ -636,6 +639,13 @@ export default function App() {
                       {c.side && <div className="side-tag">{c.side === "L" ? "Left / Even" : c.side === "R" ? "Right / Odd" : c.side}</div>}
                       <div className="chips">{DAYS.map(d => <span key={d} className={`chip ${c.days?.includes(d) ? "on" : ""}`}>{d}</span>)}</div>
                       {c.time && <div className="clean-time">{c.time}</div>}
+                      {c.upcomingDates?.length > 0 && (
+                        <div style={{marginTop:8,display:"flex",flexWrap:"wrap",gap:5}}>
+                          {c.upcomingDates.map((d, di) => (
+                            <span key={di} style={{fontFamily:"var(--mono)",fontSize:".56rem",padding:"2px 7px",background:di===0&&c.days?.includes(today)?"var(--red)":"var(--g1)",color:di===0&&c.days?.includes(today)?"var(--white)":"var(--muted)",border:"1px solid #2a2a2a",letterSpacing:".03em"}}>{d}</span>
+                          ))}
+                        </div>
+                      )}
                       <div className="clean-raw">{c.raw}</div>
                     </div>
                   ))}
