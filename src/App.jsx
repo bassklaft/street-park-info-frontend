@@ -438,24 +438,6 @@ export default function StreetParkInfo() {
   });
   const [showHistory, setShowHistory] = useState(false);
 
-  const saveSearch = (loc) => {
-    if (!isSubscribed) return; // only save for subscribers
-    const entry = {
-      id: Date.now(),
-      label: loc.label || loc.street,
-      street: loc.street,
-      borough: loc.borough || "",
-      neighborhood: loc.neighborhood || "",
-      lat: loc.lat,
-      lng: loc.lng,
-      type: loc.isEstablishment ? "establishment" : loc.isPark ? "park" : loc.isZip ? "zip" : "location",
-      ts: new Date().toLocaleString("en-US", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }),
-    };
-    const updated = [entry, ...savedSearches.filter(s => s.label !== entry.label)].slice(0, MAX_SAVED);
-    setSavedSearches(updated);
-    localStorage.setItem("spi_saved", JSON.stringify(updated));
-  };
-
   const clearHistory = () => {
     setSavedSearches([]);
     localStorage.removeItem("spi_saved");
@@ -463,17 +445,14 @@ export default function StreetParkInfo() {
 
   const today = todayAbbr();
 
-  // Auto-trigger GPS if launched from home screen with ?gps=1
-  useEffect(() => {
-    if (window.__AUTO_GPS__) {
-      window.__AUTO_GPS__ = false;
-      setTimeout(() => handleGPS(), 500);
-    }
-  }, [handleGPS]);
-
   const resetHome = () => {
     setPhase("home"); setLocData(null); setSignedUp(false);
     setQuery(""); setSelectedEstab(null); setErr(null);
+  };
+
+  const clearHistory = () => {
+    setSavedSearches([]);
+    localStorage.removeItem("spi_saved");
   };
 
   const loadCleaningForStreets = async (streets, lat, lng) => {
@@ -486,7 +465,25 @@ export default function StreetParkInfo() {
     setCoords({ lat: loc.lat, lng: loc.lng });
     setSelectedEstab(null);
     setPhase("loading");
-    saveSearch(loc);
+
+    // Save search for subscribers
+    setSavedSearches(prev => {
+      const subscribed = localStorage.getItem("spi_subscribed") === "true";
+      if (!subscribed) return prev;
+      const entry = {
+        id: Date.now(),
+        label: loc.label || loc.street,
+        street: loc.street,
+        borough: loc.borough || "",
+        neighborhood: loc.neighborhood || "",
+        lat: loc.lat, lng: loc.lng,
+        type: loc.isEstablishment ? "establishment" : loc.isPark ? "park" : loc.isZip ? "zip" : "location",
+        ts: new Date().toLocaleString("en-US", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }),
+      };
+      const updated = [entry, ...prev.filter(s => s.label !== entry.label)].slice(0, 20);
+      localStorage.setItem("spi_saved", JSON.stringify(updated));
+      return updated;
+    });
 
     const streetsToFetch =
       loc.isPark && loc.parkStreets?.length ? loc.parkStreets :
@@ -507,7 +504,7 @@ export default function StreetParkInfo() {
     setWeather (wx.status === "fulfilled" ? wx.value : null);
     setAsp     (a.status === "fulfilled" ? a.value : null);
     setPhase("dash");
-  }, [savedSearches, isSubscribed]);
+  }, []);
 
   const handleSearch = useCallback(async () => {
     const q = query.trim();
@@ -520,14 +517,13 @@ export default function StreetParkInfo() {
       if (loc.isEstablishment) {
         setLocData(loc);
         setCoords({ lat: loc.establishments[0]?.lat || 40.7580, lng: loc.establishments[0]?.lng || -73.9855 });
-        if (isSubscribed) saveSearch(loc);
         setPhase("dash");
         setCleaning([]); setFilms([]); setEvents([]); setWeather(null); setAsp(null);
       } else {
         await loadAll(loc);
       }
     } catch (e) { setErr(e.message); setPhase("home"); }
-  }, [query, coords, loadAll, isSubscribed, savedSearches]);
+  }, [query, coords, loadAll, checkGate, incrementSearch]);
 
   const handleGPS = useCallback(() => {
     setErr(null);
@@ -552,7 +548,15 @@ export default function StreetParkInfo() {
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
-  }, [loadAll]);
+  }, [loadAll, checkGate, incrementSearch]);
+
+  // Auto-trigger GPS if launched from home screen with ?gps=1
+  useEffect(() => {
+    if (window.__AUTO_GPS__) {
+      window.__AUTO_GPS__ = false;
+      setTimeout(() => handleGPS(), 500);
+    }
+  }, [handleGPS]);
 
   const handleSignup = async () => {
     const digits = phone.replace(/\D/g,"");
