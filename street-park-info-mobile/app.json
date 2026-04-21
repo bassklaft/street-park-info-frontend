@@ -11,13 +11,26 @@
       "resizeMode": "contain",
       "backgroundColor": "#080808"
     },
-    "ios": { "supportsTablet": true },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bassklaft.streetparkinfomobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#080808"
       }
     },
-    "web": { "favicon": "./assets/favicon.png" }
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "787c1d1f-fd03-4721-8bbc-fe48c4f14572"
+      }
+    }
   }
 }

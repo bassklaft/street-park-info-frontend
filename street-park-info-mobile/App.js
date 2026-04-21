@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, SafeAreaView, Keyboard } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, SafeAreaView, Keyboard, Alert } from 'react-native';
+import * as Location from 'expo-location';
 
 const API = 'https://street-park-info-backend.onrender.com';
 
@@ -29,6 +30,7 @@ export default function App() {
     const streets =
       loc.isPark && loc.parkStreets?.length ? loc.parkStreets :
       (loc.isZip || loc.isNeighborhood) && loc.zipStreets?.length ? loc.zipStreets :
+      loc.isGPS && loc.nearbyStreets?.length ? loc.nearbyStreets :
       [loc.street];
     const data = await fetchCleaningForStreets(streets, loc.lat, loc.lng);
     setResult(loc);
@@ -46,6 +48,24 @@ export default function App() {
       if (!r.ok) throw new Error(loc.error || 'Not found');
       if (loc.type === 'ambiguous') { setAmbiguous(loc); setLoading(false); return; }
       await loadLocation(loc);
+    } catch(e) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleGPS = async () => {
+    setLoading(true); setError(null); setResult(null); setCleaning([]); setAmbiguous(null);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Location Required', 'Please enable location in Settings.');
+        setLoading(false); return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const { latitude: lat, longitude: lng } = loc.coords;
+      const r = await fetch(`${API}/api/reverse-geocode?lat=${lat}&lng=${lng}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error('Could not identify your street');
+      await loadLocation({ ...data, lat, lng });
     } catch(e) { setError(e.message); }
     finally { setLoading(false); }
   };
@@ -68,7 +88,7 @@ export default function App() {
 
   const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const today = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
-  const isMulti = result?.isPark || result?.isZip || result?.isNeighborhood;
+  const isMulti = result?.isPark || result?.isZip || result?.isNeighborhood || result?.isGPS;
   const groupByCategory = (options) => options.reduce((acc, opt) => { const cat = opt.category || 'Other'; if (!acc[cat]) acc[cat] = []; acc[cat].push(opt); return acc; }, {});
 
   return (
@@ -83,6 +103,9 @@ export default function App() {
             {loading ? <ActivityIndicator color="#000" /> : <Text style={s.btnText}>GO</Text>}
           </TouchableOpacity>
         </View>
+        <TouchableOpacity style={s.gpsBtn} onPress={handleGPS} disabled={loading}>
+          <Text style={s.gpsBtnText}>📍  Use My Current Location</Text>
+        </TouchableOpacity>
         {error && <Text style={s.err}>⚠ {error}</Text>}
 
         {ambiguous && (
@@ -108,10 +131,10 @@ export default function App() {
 
         {result && (
           <View style={s.card}>
-            <Text style={s.cardEye}>📍 YOUR LOCATION</Text>
+            <Text style={s.cardEye}>📍 {result.isGPS ? 'YOUR LOCATION' : 'SEARCH RESULT'}</Text>
             <Text style={s.cardName}>{result.label || result.street}</Text>
             <Text style={s.cardMeta}>{[result.neighborhood, result.borough].filter(Boolean).join(' · ')}</Text>
-            {isMulti && <Text style={s.cardSub}>{cleaning.length} streets · alphabetical</Text>}
+            {isMulti && <Text style={s.cardSub}>{result.isGPS ? 'Nearby streets · closest first' : `${cleaning.length} streets`}</Text>}
           </View>
         )}
 
@@ -151,10 +174,12 @@ const s = StyleSheet.create({
   logo: { fontSize:22, color:'#F7C948', fontWeight:'700', letterSpacing:1, marginBottom:4, marginTop:8 },
   accent: { color:'#EDEBE4' },
   tagline: { fontSize:40, color:'#EDEBE4', fontWeight:'700', marginBottom:32, lineHeight:44 },
-  row: { flexDirection:'row', borderWidth:2, borderColor:'#F7C948', marginBottom:16, backgroundColor:'#1e1e1e' },
+  row: { flexDirection:'row', borderWidth:2, borderColor:'#F7C948', marginBottom:8, backgroundColor:'#1e1e1e' },
   input: { flex:1, color:'#EDEBE4', fontSize:15, padding:14 },
   btn: { backgroundColor:'#F7C948', justifyContent:'center', alignItems:'center', paddingHorizontal:20 },
   btnText: { fontSize:18, fontWeight:'700', color:'#000' },
+  gpsBtn: { borderWidth:1, borderColor:'#2a2a2a', padding:13, alignItems:'center', marginBottom:16, borderRadius:6 },
+  gpsBtnText: { fontSize:13, color:'#888' },
   err: { color:'#E53E3E', fontSize:13, marginBottom:12 },
   ambigTitle: { fontSize:26, color:'#EDEBE4', fontWeight:'700', marginBottom:6 },
   ambigSub: { fontSize:12, color:'#666', marginBottom:16, lineHeight:18 },

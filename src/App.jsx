@@ -132,7 +132,78 @@ function ParkMap({ destLat, destLng, userLat, userLng, label, history = [] }) {
   return <div ref={ref} style={{ width:"100%", height:"260px" }} />;
 }
 
-// ─── CSS ──────────────────────────────────────────────────────────────────────
+// ─── HEAT MAP ────────────────────────────────────────────────────────────────
+// Shows color-coded streets on home screen based on cleaning urgency
+function HeatMap({ userLat, userLng, onStreetClick }) {
+  const ref = useRef(null);
+  const inst = useRef(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!userLat || !userLng || !ref.current) return;
+    let alive = true;
+
+    const load = async () => {
+      setLoading(true);
+      if (!window.L) {
+        const lnk = document.createElement("link");
+        lnk.rel = "stylesheet"; lnk.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(lnk);
+        await new Promise(res => { const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload = res; document.head.appendChild(s); });
+      }
+      if (!alive || !ref.current) return;
+      const L = window.L;
+
+      if (inst.current) { inst.current.remove(); inst.current = null; }
+
+      const map = L.map(ref.current, { center: [userLat, userLng], zoom: 16, zoomControl: false });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OSM", maxZoom: 19 }).addTo(map);
+
+      // Blue user dot
+      const blueIcon = L.divIcon({ html: `<svg viewBox="0 0 18 18" width="18" height="18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#3182CE" opacity="0.3"/><circle cx="9" cy="9" r="5" fill="#3182CE"/><circle cx="9" cy="9" r="2.5" fill="white"/></svg>`, className: "", iconSize: [18,18], iconAnchor: [9,9] });
+      L.marker([userLat, userLng], { icon: blueIcon }).addTo(map).bindPopup("📍 You are here");
+
+      // Fetch heatmap data
+      try {
+        const r = await fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`);
+        const streets = r.ok ? await r.json() : [];
+        const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#444" };
+        const weightMap = { red: 6, yellow: 5, green: 4, gray: 3 };
+
+        streets.forEach(s => {
+          if (!s.coords?.length) return;
+          const color = colorMap[s.urgency] || colorMap.gray;
+          const weight = weightMap[s.urgency] || 3;
+          const line = L.polyline(s.coords, { color, weight, opacity: 0.85 }).addTo(map);
+          const popup = `<b style="font-size:13px">${s.street}</b><br/><span style="font-size:11px;color:${s.urgency==='red'?'#E53E3E':s.urgency==='yellow'?'#c9a010':'#38A169'}">${s.nextClean || "No restrictions"}</span>`;
+          line.bindPopup(popup);
+          line.on("click", () => { if (onStreetClick) onStreetClick(s.street); });
+        });
+      } catch(e) { console.error("Heatmap data error:", e.message); }
+
+      inst.current = map;
+      setLoading(false);
+    };
+
+    load().catch(console.error);
+    return () => { alive = false; if (inst.current) { inst.current.remove(); inst.current = null; } };
+  }, [userLat, userLng]);
+
+  return (
+    <div style={{position:"relative",marginBottom:16}}>
+      <div ref={ref} style={{width:"100%",height:"280px",border:"1px solid #2a2a2a"}} />
+      {loading && <div style={{position:"absolute",inset:0,background:"rgba(8,8,8,.7)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--mono)",fontSize:".65rem",color:"var(--yellow)",letterSpacing:".1em"}}>LOADING MAP…</div>}
+      <div style={{display:"flex",gap:16,padding:"8px 12px",background:"var(--g2)",borderTop:"1px solid #222",flexWrap:"wrap"}}>
+        {[["#E53E3E","Move today/tomorrow"],["#F7C948","Move in 2-3 days"],["#38A169","Safe 4+ days"],["#444","No data"]].map(([c,l]) => (
+          <div key={l} style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:24,height:4,background:c,borderRadius:2}} />
+            <span style={{fontFamily:"var(--mono)",fontSize:".58rem",color:"var(--muted)"}}>{l}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&family=Barlow+Condensed:wght@400;500;600;700&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -315,6 +386,7 @@ export default function App() {
   const [isSubscribed]                      = useState(() => Storage.isSubscribed());
   const [savedSearches,  setSavedSearches]  = useState(() => Storage.getSaved());
   const [showHistory,    setShowHistory]    = useState(false);
+  const [homeMapCoords,  setHomeMapCoords]  = useState(null);
 
   // All useCallback hooks next — defined in dependency order
   const resetHome = useCallback(() => {
@@ -431,6 +503,16 @@ export default function App() {
     if (window.__AUTO_GPS__) { window.__AUTO_GPS__ = false; setTimeout(handleGPS, 500); }
   }, [handleGPS]);
 
+  // Silent GPS for home screen heat map — doesn't count against search gate
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords: { latitude, longitude } }) => setHomeMapCoords({ lat: latitude, lng: longitude }),
+        () => {}
+      );
+    }
+  }, []);
+
   // Derived values (not hooks)
   const today        = todayAbbr();
   const cleanToday   = cleaning.some(c => c.days?.includes(today));
@@ -474,6 +556,20 @@ export default function App() {
             <button className="gps-btn" onClick={handleGPS}>📍 Use my current location</button>
             {err && <div className="err">⚠ {err}</div>}
           </div>
+
+          {/* HEAT MAP — shows when location is available */}
+          {homeMapCoords && (
+            <div style={{width:"100%",maxWidth:540,marginTop:20}}>
+              <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--yellow)",letterSpacing:".12em",textTransform:"uppercase",marginBottom:8}}>
+                🗺 Parking heat map · tap a street to search it
+              </div>
+              <HeatMap
+                userLat={homeMapCoords.lat}
+                userLng={homeMapCoords.lng}
+                onStreetClick={(street) => { setQuery(street); handleSearch(); }}
+              />
+            </div>
+          )}
         </div>
       )}
 
