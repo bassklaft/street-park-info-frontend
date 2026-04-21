@@ -496,7 +496,20 @@ export default function App() {
             <div key={category}>
               <div className="ambiguous-category">{category}</div>
               {options.map((opt, i) => (
-                <div key={i} className="ambiguous-option" onClick={() => loadAll(opt)}>
+                <div key={i} className="ambiguous-option" onClick={async () => {
+                  // For neighborhoods, re-geocode to get full street list
+                  if (opt.type === "neighborhood" || category === "Neighborhood") {
+                    setPhase("loading");
+                    try {
+                      const full = await geocode(opt.label, coords?.lat, coords?.lng);
+                      await loadAll(full);
+                    } catch(e) {
+                      await loadAll(opt);
+                    }
+                  } else {
+                    await loadAll(opt);
+                  }
+                }}>
                   <div>
                     <div className="ambiguous-option-label">{opt.label}</div>
                     <div className="ambiguous-option-meta">{opt.borough}{opt.neighborhood ? ` · ${opt.neighborhood}` : ""}</div>
