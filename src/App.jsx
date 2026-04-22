@@ -566,7 +566,8 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 .ambiguous-arrow{font-family:var(--mono);font-size:.8rem;color:var(--muted);}
 inset:0;background:rgba(0,0,0,.92);z-index:500;display:flex;align-items:flex-end;justify-content:center}
 .auth-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
-.auth-modal{background:var(--g2);border:1px solid var(--yellow);padding:32px 28px;width:100%;max-width:420px;animation:slideUp .25s ease}
+.paywall-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.auth-modal{background:var(--g2);border:1px solid var(--yellow);padding:32px 28px;width:100%;max-width:420px;animation:slideUp .25s ease;position:relative}
 .auth-title{font-family:var(--display);font-size:2rem;letter-spacing:.06em;margin-bottom:4px}
 .auth-sub{font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:24px;letter-spacing:.06em;line-height:1.6}
 .auth-input{width:100%;background:#111;border:1px solid #333;color:var(--white);font-family:var(--mono);font-size:.9rem;padding:12px 14px;margin-bottom:10px;outline:none;box-sizing:border-box;transition:border-color .15s}
@@ -750,6 +751,7 @@ export default function App() {
   const [authEmail,      setAuthEmail]      = useState("");
   const [authPassword,   setAuthPassword]   = useState("");
   const [authName,       setAuthName]       = useState("");
+  const [authLastName,   setAuthLastName]   = useState("");
   const [authErr,        setAuthErr]        = useState(null);
   const [authBusy,       setAuthBusy]       = useState(false);
 
@@ -774,7 +776,7 @@ export default function App() {
     try {
       const endpoint = authMode === "signup" ? "/auth/signup" : "/auth/login";
       const body = authMode === "signup"
-        ? { email: authEmail, password: authPassword, name: authName }
+        ? { email: authEmail, password: authPassword, name: `${authName} ${authLastName}`.trim() }
         : { email: authEmail, password: authPassword };
       const r = await fetch(`${API}${endpoint}`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
       const d = await r.json();
@@ -1007,8 +1009,10 @@ export default function App() {
           <div style={{width:80,display:"flex",justifyContent:"flex-end"}}>
             {user ? (
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <span className={`tier-badge tier-${user.tier}`}>{user.tier?.toUpperCase()}</span>
-                <button className="user-pill" onClick={handleLogout}>↪ OUT</button>
+                <span className={`tier-badge tier-${user.tier}`} style={{fontSize:".65rem",padding:"2px 8px"}}>
+                  {user.tier === "unlimited" ? "UNLIMITED+SAVE" : user.tier === "premium" ? "PREMIUM" : user.tier === "basic" ? "BASIC" : "FREE"}
+                </span>
+                <button className="user-pill" onClick={handleLogout}>SIGN OUT</button>
               </div>
             ) : (
               <button className="user-pill" onClick={() => { setAuthMode("login"); setShowAuthModal(true); }}>SIGN IN</button>
@@ -1027,11 +1031,14 @@ export default function App() {
             <h1 className="h1">STREET PARK <em>NOW.</em></h1>
             <p className="app-tagline">Street Parking Info For Your City</p>
             <div className="search-section">
-              {!isSubscribed && searchCount > 0 && (
-                <div className="gate-note" style={{color: remaining === 0 ? "var(--red)" : "var(--yellow)"}}>
-                  {remaining === 0
-                    ? Auth.isLoggedIn() ? "⚠ Free searches used — subscribe to continue" : "⚠ Sign up free to get 8 searches"
-                    : `${remaining} free search${remaining === 1 ? "" : "es"} remaining`}
+              {searchCount > 0 && (
+                <div className="gate-note" style={{color: Auth.isPaid() ? "var(--yellow)" : remaining === 0 ? "var(--red)" : "var(--yellow)"}}>
+                  {Auth.getTier() === "unlimited" ? "✓ Unlimited searches + Save feature" :
+                   Auth.getTier() === "premium"   ? "✓ Unlimited searches" :
+                   Auth.getTier() === "basic"     ? `✓ ${Math.max(0, 999 - searchCount)} searches remaining` :
+                   remaining === 0
+                     ? Auth.isLoggedIn() ? "⚠ Free searches used — subscribe to continue" : "⚠ Sign up free to get 8 searches"
+                     : `${remaining} free search${remaining === 1 ? "" : "es"} remaining`}
                 </div>
               )}
               <div style={{position:"relative"}}>
@@ -1415,7 +1422,10 @@ export default function App() {
             </div>
             {authErr && <div className="auth-err">⚠ {authErr}</div>}
             {authMode === "signup" && (
-              <input className="auth-input" type="text" placeholder="Your name" value={authName} onChange={e => setAuthName(e.target.value)} />
+              <div style={{display:"flex",gap:8}}>
+                <input className="auth-input" style={{flex:1}} type="text" placeholder="First name" value={authName} onChange={e => setAuthName(e.target.value)} />
+                <input className="auth-input" style={{flex:1}} type="text" placeholder="Last name" value={authLastName} onChange={e => setAuthLastName(e.target.value)} />
+              </div>
             )}
             <input className="auth-input" type="email" placeholder="Email address" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
             <input className="auth-input" type="password" placeholder="Password" value={authPassword} onChange={e => setAuthPassword(e.target.value)}
