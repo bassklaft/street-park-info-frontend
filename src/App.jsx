@@ -151,64 +151,96 @@ function ParkMap({ destLat, destLng, userLat, userLng, label, history = [] }) {
 function HeatMap({ userLat, userLng, onStreetClick }) {
   const ref = useRef(null);
   const inst = useRef(null);
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("loading");
 
   useEffect(() => {
-    if (!userLat || !userLng || !ref.current) return;
+    if (!userLat || !userLng) return;
     let alive = true;
 
-    const load = async () => {
-      setLoading(true);
-      if (!window.L) {
-        const lnk = document.createElement("link");
-        lnk.rel = "stylesheet"; lnk.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(lnk);
-        await new Promise(res => { const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload = res; document.head.appendChild(s); });
-      }
+    const initMap = (L) => {
       if (!alive || !ref.current) return;
-      const L = window.L;
+      if (inst.current) { try { inst.current.remove(); } catch(e){} inst.current = null; }
 
-      if (inst.current) { inst.current.remove(); inst.current = null; }
+      const map = L.map(ref.current, { center: [userLat, userLng], zoom: 16, zoomControl: true });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OSM", maxZoom: 19
+      }).addTo(map);
 
-      const map = L.map(ref.current, { center: [userLat, userLng], zoom: 16, zoomControl: false });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OSM", maxZoom: 19 }).addTo(map);
-
-      // Blue user dot
-      const blueIcon = L.divIcon({ html: `<svg viewBox="0 0 18 18" width="18" height="18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#3182CE" opacity="0.3"/><circle cx="9" cy="9" r="5" fill="#3182CE"/><circle cx="9" cy="9" r="2.5" fill="white"/></svg>`, className: "", iconSize: [18,18], iconAnchor: [9,9] });
+      const blueIcon = L.divIcon({
+        html: `<div style="width:14px;height:14px;background:#3182CE;border-radius:50%;border:2px solid white;box-shadow:0 0 6px rgba(49,130,206,0.6)"></div>`,
+        className: "", iconSize: [14,14], iconAnchor: [7,7]
+      });
       L.marker([userLat, userLng], { icon: blueIcon }).addTo(map).bindPopup("📍 You are here");
 
-      // Fetch heatmap data
-      try {
-        const r = await fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`);
-        const streets = r.ok ? await r.json() : [];
-        const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#444" };
-        const weightMap = { red: 6, yellow: 5, green: 4, gray: 3 };
-
-        streets.forEach(s => {
-          if (!s.coords?.length) return;
-          const color = colorMap[s.urgency] || colorMap.gray;
-          const weight = weightMap[s.urgency] || 3;
-          const line = L.polyline(s.coords, { color, weight, opacity: 0.85 }).addTo(map);
-          const popup = `<b style="font-size:13px">${s.street}</b><br/><span style="font-size:11px;color:${s.urgency==='red'?'#E53E3E':s.urgency==='yellow'?'#c9a010':'#38A169'}">${s.nextClean || "No restrictions"}</span>`;
-          line.bindPopup(popup);
-          line.on("click", () => { if (onStreetClick) onStreetClick(s.street); });
-        });
-      } catch(e) { console.error("Heatmap data error:", e.message); }
-
       inst.current = map;
-      setLoading(false);
+      setStatus("ready");
+
+      // Load heatmap data after map is ready
+      fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
+        .then(r => r.ok ? r.json() : [])
+        .then(streets => {
+          if (!alive || !inst.current) return;
+          const colorMap = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#333" };
+          const weightMap = { red:6, yellow:5, green:4, gray:2 };
+          streets.forEach(s => {
+            if (!s.coords?.length) return;
+            const color = colorMap[s.urgency] || colorMap.gray;
+            const line = L.polyline(s.coords, { color, weight: weightMap[s.urgency]||3, opacity:0.9 }).addTo(inst.current);
+            line.bindPopup(`<b>${s.street}</b><br/><small>${s.nextClean || "No restrictions"}</small>`);
+            line.on("click", () => onStreetClick && onStreetClick(s.street));
+          });
+        })
+        .catch(e => console.error("Heatmap fetch error:", e));
     };
 
-    load().catch(console.error);
-    return () => { alive = false; if (inst.current) { inst.current.remove(); inst.current = null; } };
+    const loadLeaflet = () => {
+      // Check if already loaded
+      if (window.L) { initMap(window.L); return; }
+
+      // Load CSS
+      if (!document.querySelector('link[href*="leaflet"]')) {
+        const css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(css);
+      }
+
+      // Load JS
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.onload = () => { if (alive) initMap(window.L); };
+      script.onerror = () => { setStatus("error"); };
+      document.head.appendChild(script);
+    };
+
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(loadLeaflet, 100);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      if (inst.current) { try { inst.current.remove(); } catch(e){} inst.current = null; }
+    };
   }, [userLat, userLng]);
 
   return (
     <div style={{position:"relative",marginBottom:16}}>
-      <div ref={ref} style={{width:"100%",height:"280px",border:"1px solid #2a2a2a"}} />
-      {loading && <div style={{position:"absolute",inset:0,background:"rgba(8,8,8,.7)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--mono)",fontSize:".65rem",color:"var(--yellow)",letterSpacing:".1em"}}>LOADING MAP…</div>}
+      <div
+        ref={ref}
+        style={{width:"100%",height:"300px",border:"1px solid #2a2a2a",background:"#111",display:"block"}}
+      />
+      {status === "loading" && (
+        <div style={{position:"absolute",inset:0,background:"rgba(8,8,8,.85)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}>
+          <div style={{width:24,height:24,border:"2px solid #333",borderTopColor:"var(--yellow)",borderRadius:"50%",animation:"spin .8s linear infinite"}} />
+          <span style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--yellow)",letterSpacing:".1em"}}>LOADING MAP…</span>
+        </div>
+      )}
+      {status === "error" && (
+        <div style={{position:"absolute",inset:0,background:"#111",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <span style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)"}}>Map unavailable</span>
+        </div>
+      )}
       <div style={{display:"flex",gap:16,padding:"8px 12px",background:"var(--g2)",borderTop:"1px solid #222",flexWrap:"wrap"}}>
-        {[["#E53E3E","Move today/tomorrow"],["#F7C948","Move in 2-3 days"],["#38A169","Safe 4+ days"],["#444","No data"]].map(([c,l]) => (
+        {[["#E53E3E","Move today/tomorrow"],["#F7C948","Move in 2-3 days"],["#38A169","Safe 4+ days"],["#333","No data"]].map(([c,l]) => (
           <div key={l} style={{display:"flex",alignItems:"center",gap:6}}>
             <div style={{width:24,height:4,background:c,borderRadius:2}} />
             <span style={{fontFamily:"var(--mono)",fontSize:".58rem",color:"var(--white)"}}>{l}</span>
@@ -344,6 +376,17 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 .p-cta{margin-top:13px;display:block;width:100%;text-align:center;background:var(--black);color:var(--yellow);font-family:var(--display);font-size:1.1rem;letter-spacing:.1em;padding:10px;border:none;cursor:pointer;transition:opacity .15s}
 .p-cta:hover{opacity:.8}
 .empty{font-family:var(--mono);font-size:.68rem;color:#444;padding:14px 0}
+.home-btn{background:none;border:1px solid #333;color:#888;font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;padding:5px 12px;cursor:pointer;transition:all .15s;position:absolute;left:50%;transform:translateX(-50%)}
+.home-btn:hover{border-color:var(--yellow);color:var(--yellow)}
+.hero-eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;color:var(--yellow);margin-bottom:12px;display:block}
+.ticket-stat{background:var(--g2);border:1px solid #2a2a2a;border-left:3px solid var(--red);padding:14px 18px;margin-bottom:20px;max-width:540px}
+.ticket-stat-num{font-family:var(--display);font-size:2.4rem;color:var(--red);letter-spacing:.04em;line-height:1}
+.ticket-stat-label{font-family:var(--mono);font-size:.62rem;color:var(--muted);letter-spacing:.04em;margin-top:4px;line-height:1.5}
+.ticket-stat-label strong{color:var(--white)}
+.move-car-banner{max-width:540px;margin-top:28px;background:linear-gradient(135deg,#0a0a1a 0%,#0a0a0a 100%);border:1px solid #3a3a6a;padding:20px;position:relative;overflow:hidden}
+.move-car-badge{position:absolute;top:0;right:0;background:#3a3a6a;color:#aaaaff;font-family:var(--mono);font-size:.55rem;letter-spacing:.12em;padding:3px 10px}
+.move-car-title{font-family:var(--display);font-size:1.6rem;letter-spacing:.06em;color:#aaaaff;margin-bottom:6px}
+.move-car-sub{font-family:var(--mono);font-size:.62rem;color:#666;letter-spacing:.04em;line-height:1.6}
 .ambiguous-wrap{min-height:calc(100vh - 60px);padding:32px 24px;max-width:600px;margin:0 auto;animation:up .3s ease;}
 .ambiguous-title{font-family:var(--display);font-size:2rem;letter-spacing:.04em;margin-bottom:6px;}
 .ambiguous-sub{font-family:var(--mono);font-size:.65rem;color:var(--muted);letter-spacing:.06em;margin-bottom:24px;}
@@ -523,13 +566,15 @@ export default function App() {
     if (window.__AUTO_GPS__) { window.__AUTO_GPS__ = false; setTimeout(handleGPS, 500); }
   }, [handleGPS]);
 
-  // Silent GPS for home screen heat map — doesn't count against search gate
+  // Silent GPS for home screen heat map — falls back to NYC if denied
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         ({ coords: { latitude, longitude } }) => setHomeMapCoords({ lat: latitude, lng: longitude }),
-        () => {}
+        () => setHomeMapCoords({ lat: 40.7580, lng: -73.9855 }) // default to Times Square
       );
+    } else {
+      setHomeMapCoords({ lat: 40.7580, lng: -73.9855 });
     }
   }, []);
 
@@ -550,9 +595,10 @@ export default function App() {
 
       {/* NAV */}
       <nav className="nav">
-        <div className="logo" onClick={resetHome}>STREET PARK <span>INFO</span></div>
+        <div className="logo" onClick={resetHome} style={{cursor:"pointer"}}>STREET PARK <span>INFO</span></div>
+        <button className="home-btn" onClick={resetHome}>⌂ HOME</button>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <span className="pill">NYC</span>
+          <span className="pill">NYC+</span>
           {phase === "dash" && <button className="pill ghost" onClick={resetHome}>↺ CHANGE</button>}
         </div>
       </nav>
@@ -560,7 +606,12 @@ export default function App() {
       {/* HOME */}
       {phase === "home" && (
         <div className="home">
+          <div className="hero-eyebrow">😤 Tired of expensive parking tickets?</div>
           <h1 className="h1">KNOW BEFORE<br /><em>YOU PARK.</em></h1>
+          <div className="ticket-stat">
+            <div className="ticket-stat-num">16,092,421</div>
+            <div className="ticket-stat-label">parking tickets issued in NYC last year alone · avg. <strong>$65</strong> each · totaling over <strong>$1 billion</strong></div>
+          </div>
           <p className="sub">Street cleaning · Film shoots · Events · Weather<br /><strong>NYC · LA · Chicago · SF · Boston · Philly · DC · Seattle</strong></p>
           <div className="search-wrap">
             {!isSubscribed && searchCount > 0 && (
@@ -590,6 +641,17 @@ export default function App() {
               />
             </div>
           )}
+
+          {/* WE'LL MOVE YOUR CAR */}
+          <div className="move-car-banner">
+            <span className="move-car-badge">COMING SOON</span>
+            <div className="move-car-title">🚗 WE'LL MOVE YOUR CAR</div>
+            <div className="move-car-sub">
+              Can't move your car in time? We'll send a trusted driver to move it for you.<br/>
+              Available for vehicles with smart key access · Safe, insured, background-checked drivers.<br/>
+              <span style={{color:"#aaaaff",marginTop:4,display:"block"}}>Join the waitlist →</span>
+            </div>
+          </div>
         </div>
       )}
 
