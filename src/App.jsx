@@ -223,86 +223,118 @@ function ParkMap({ destLat, destLng, userLat, userLng, label, history = [] }) {
 // Shows color-coded streets on home screen based on cleaning urgency
 function HeatMap({ userLat, userLng, onStreetClick }) {
   const ref = useRef(null);
-  const inst = useRef(null);
+  const mapRef = useRef(null);
   const [status, setStatus] = useState("loading");
 
   useEffect(() => {
     if (!userLat || !userLng) return;
     let alive = true;
 
-    const initMap = (L) => {
-      if (!alive || !ref.current) return;
-      if (inst.current) { try { inst.current.remove(); } catch(e){} inst.current = null; }
+    const initMap = () => {
+      if (!alive || !ref.current || !window.google?.maps) return;
 
-      const map = L.map(ref.current, { center: [userLat, userLng], zoom: 16, zoomControl: true });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OSM", maxZoom: 19
-      }).addTo(map);
-
-      const blueIcon = L.divIcon({
-        html: `<div style="width:14px;height:14px;background:#3182CE;border-radius:50%;border:2px solid white;box-shadow:0 0 6px rgba(49,130,206,0.6)"></div>`,
-        className: "", iconSize: [14,14], iconAnchor: [7,7]
+      const map = new window.google.maps.Map(ref.current, {
+        center: { lat: userLat, lng: userLng },
+        zoom: 16,
+        mapTypeId: "roadmap",
+        disableDefaultUI: false,
+        zoomControl: true,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: false,
+        styles: [
+          { elementType: "geometry", stylers: [{ color: "#1a1a1a" }] },
+          { elementType: "labels.text.stroke", stylers: [{ color: "#242424" }] },
+          { elementType: "labels.text.fill", stylers: [{ color: "#888888" }] },
+          { featureType: "road", elementType: "geometry", stylers: [{ color: "#2c2c2c" }] },
+          { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212121" }] },
+          { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#3c3c3c" }] },
+          { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+          { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] },
+          { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3d3d3d" }] },
+          { featureType: "poi", stylers: [{ visibility: "off" }] },
+          { featureType: "transit", stylers: [{ visibility: "off" }] },
+        ],
       });
-      L.marker([userLat, userLng], { icon: blueIcon }).addTo(map).bindPopup("📍 You are here");
 
-      inst.current = map;
+      // Blue user dot
+      new window.google.maps.Marker({
+        position: { lat: userLat, lng: userLng },
+        map,
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: "#3182CE",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+        },
+        title: "You are here",
+      });
+
+      mapRef.current = map;
       setStatus("ready");
 
-      // Load heatmap data after map is ready
+      // Load heat map data
       fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
         .then(r => r.ok ? r.json() : [])
         .then(streets => {
-          if (!alive || !inst.current) return;
-          const colorMap = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#333" };
-          const weightMap = { red:6, yellow:5, green:4, gray:2 };
+          if (!alive || !mapRef.current) return;
+          const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#444444" };
+          const weightMap = { red: 6, yellow: 5, green: 4, gray: 2 };
+
           streets.forEach(s => {
             if (!s.coords?.length) return;
-            const color = colorMap[s.urgency] || colorMap.gray;
-            const line = L.polyline(s.coords, { color, weight: weightMap[s.urgency]||3, opacity:0.9 }).addTo(inst.current);
-            line.bindPopup(`<b>${s.street}</b><br/><small>${s.nextClean || "No restrictions"}</small>`);
-            line.on("click", () => onStreetClick && onStreetClick(s.street));
+            const path = s.coords.map(([lat, lng]) => ({ lat, lng }));
+            const line = new window.google.maps.Polyline({
+              path,
+              geodesic: true,
+              strokeColor: colorMap[s.urgency] || colorMap.gray,
+              strokeOpacity: 0.9,
+              strokeWeight: weightMap[s.urgency] || 3,
+              map: mapRef.current,
+            });
+
+            const infoWindow = new window.google.maps.InfoWindow({
+              content: `<div style="font-family:monospace;font-size:12px;color:#000;padding:4px"><b>${s.street}</b><br/>${s.nextClean || "No restrictions"}</div>`,
+            });
+
+            line.addListener("click", (e) => {
+              infoWindow.setPosition(e.latLng);
+              infoWindow.open(mapRef.current);
+              if (onStreetClick) onStreetClick(s.street);
+            });
           });
         })
         .catch(e => console.error("Heatmap fetch error:", e));
     };
 
-    const loadLeaflet = () => {
-      // Check if already loaded
-      if (window.L) { initMap(window.L); return; }
-
-      // Load CSS
-      if (!document.querySelector('link[href*="leaflet"]')) {
-        const css = document.createElement("link");
-        css.rel = "stylesheet";
-        css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(css);
+    const loadGoogleMaps = () => {
+      if (window.google?.maps) { initMap(); return; }
+      if (document.querySelector('script[src*="maps.googleapis"]')) {
+        // Script already loading — wait for it
+        const wait = setInterval(() => {
+          if (window.google?.maps) { clearInterval(wait); initMap(); }
+        }, 100);
+        return;
       }
-
-      // Load JS
       const script = document.createElement("script");
-      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      script.onload = () => { if (alive) initMap(window.L); };
-      script.onerror = () => { setStatus("error"); };
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&libraries=places`;
+      script.async = true;
+      script.onload = () => { if (alive) initMap(); };
+      script.onerror = () => setStatus("error");
       document.head.appendChild(script);
     };
 
-    // Small delay to ensure DOM is ready
-    const timer = setTimeout(loadLeaflet, 100);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-      if (inst.current) { try { inst.current.remove(); } catch(e){} inst.current = null; }
-    };
+    const timer = setTimeout(loadGoogleMaps, 100);
+    return () => { alive = false; clearTimeout(timer); };
   }, [userLat, userLng]);
 
   return (
     <div style={{position:"relative",marginBottom:16}}>
-      <div
-        ref={ref}
-        style={{width:"100%",height:"300px",border:"1px solid #2a2a2a",background:"#111",display:"block"}}
-      />
+      <div ref={ref} style={{width:"100%",height:"300px",border:"1px solid #2a2a2a",background:"#111",display:"block"}} />
       {status === "loading" && (
-        <div style={{position:"absolute",inset:0,background:"rgba(8,8,8,.85)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}>
+        <div style={{position:"absolute",inset:0,background:"rgba(8,8,8,.85)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,pointerEvents:"none"}}>
           <div style={{width:24,height:24,border:"2px solid #333",borderTopColor:"var(--yellow)",borderRadius:"50%",animation:"spin .8s linear infinite"}} />
           <span style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--yellow)",letterSpacing:".1em"}}>LOADING MAP…</span>
         </div>
@@ -313,7 +345,7 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
         </div>
       )}
       <div style={{display:"flex",gap:16,padding:"8px 12px",background:"var(--g2)",borderTop:"1px solid #222",flexWrap:"wrap"}}>
-        {[["#E53E3E","Move today/tomorrow"],["#F7C948","Move in 2-3 days"],["#38A169","Safe 4+ days"],["#333","No data"]].map(([c,l]) => (
+        {[["#E53E3E","Move today/tomorrow"],["#F7C948","Move in 2-3 days"],["#38A169","Safe 4+ days"],["#444","No data"]].map(([c,l]) => (
           <div key={l} style={{display:"flex",alignItems:"center",gap:6}}>
             <div style={{width:24,height:4,background:c,borderRadius:2}} />
             <span style={{fontFamily:"var(--mono)",fontSize:".58rem",color:"var(--white)"}}>{l}</span>
@@ -469,7 +501,7 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 .stat-city{font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:.08em;margin-bottom:4px;text-transform:uppercase}
 .stat-num{font-family:var(--display);font-size:1.3rem;color:var(--red);letter-spacing:.02em;line-height:1}
 .stat-meta{font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:.03em;margin-top:3px;line-height:1.4}
-.home-btn{background:none;border:1px solid #333;color:#888;font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;padding:5px 12px;cursor:pointer;transition:all .15s;position:absolute;left:50%;transform:translateX(-50%)}
+.home-btn{background:none;border:1px solid #333;color:#888;font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;padding:5px 20px;cursor:pointer;transition:all .15s}
 .home-btn:hover{border-color:var(--yellow);color:var(--yellow)}
 .hero-eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;color:var(--yellow);margin-bottom:12px;display:block}
 .ticket-stat{background:var(--g2);border:1px solid #2a2a2a;border-left:3px solid var(--red);padding:14px 18px;margin-bottom:20px;max-width:540px}
@@ -735,12 +767,15 @@ export default function App() {
       {/* NAV */}
       <nav className="nav">
         <div className="logo" onClick={resetHome} style={{cursor:"pointer"}}>STREET PARK <span>INFO</span></div>
-        <button className="home-btn" onClick={resetHome}>⌂ HOME</button>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span className="pill">NYC+</span>
           {phase === "dash" && <button className="pill ghost" onClick={resetHome}>↺ CHANGE</button>}
         </div>
       </nav>
+      {/* HOME BUTTON — centered below nav bar */}
+      <div style={{display:"flex",justifyContent:"center",padding:"8px 0",borderBottom:"1px solid #1a1a1a"}}>
+        <button className="home-btn" onClick={resetHome}>⌂ HOME</button>
+      </div>
 
       {/* HOME */}
       {phase === "home" && (
