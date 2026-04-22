@@ -581,8 +581,11 @@ inset:0;background:rgba(0,0,0,.92);z-index:500;display:flex;align-items:flex-end
 .auth-divider{display:flex;align-items:center;gap:12px;margin:14px 0}
 .auth-divider::before,.auth-divider::after{content:"";flex:1;height:1px;background:#2a2a2a}
 .auth-divider span{font-family:var(--mono);font-size:.58rem;color:var(--muted)}
-.user-pill{background:#1a1a1a;border:1px solid #2a2a2a;color:var(--white);font-family:var(--mono);font-size:.6rem;padding:4px 10px;cursor:pointer;display:flex;align-items:center;gap:6px}
-.user-pill:hover{border-color:#444}
+.menu-item{font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;padding:12px 16px;cursor:pointer;color:var(--white);border-bottom:1px solid #1a1a1a;transition:background .15s}
+.menu-item:last-child{border-bottom:none}
+.menu-item:hover{background:#2a2a2a}
+.user-pill{background:#1a1a1a;border:1px solid #2a2a2a;color:var(--white);font-family:var(--mono);font-size:.7rem;padding:5px 12px;cursor:pointer}
+.user-pill:hover{border-color:var(--yellow)}
 .tier-badge{font-size:.5rem;padding:1px 5px;border-radius:2px;font-weight:700;letter-spacing:.05em}
 .tier-free{background:#2a2a2a;color:#777}
 .tier-basic{background:#1a3a1a;color:#38A169}
@@ -754,6 +757,7 @@ export default function App() {
   const [authLastName,   setAuthLastName]   = useState("");
   const [authErr,        setAuthErr]        = useState(null);
   const [authBusy,       setAuthBusy]       = useState(false);
+  const [showUserMenu,   setShowUserMenu]   = useState(false);
 
   // All useCallback hooks next — defined in dependency order
   const resetHome = useCallback(() => {
@@ -1012,11 +1016,35 @@ export default function App() {
             )}
           </div>
           <button className="home-btn" onClick={resetHome}>⌂ HOME</button>
-          <div style={{width:110,display:"flex",justifyContent:"flex-end"}}>
-            {user ? (
-              <button className="user-pill" onClick={handleLogout} style={{whiteSpace:"nowrap"}}>SIGN OUT</button>
-            ) : (
-              <button className="user-pill" onClick={() => { setAuthMode("login"); setShowAuthModal(true); }}>SIGN IN</button>
+          <div style={{width:110,display:"flex",justifyContent:"flex-end",position:"relative"}}>
+            <button 
+              className="user-pill" 
+              onClick={() => setShowUserMenu(v => !v)}
+              style={{whiteSpace:"nowrap",fontSize:"1rem",letterSpacing:".05em",padding:"4px 12px"}}
+            >☰</button>
+            {showUserMenu && (
+              <div style={{position:"absolute",top:"100%",right:0,marginTop:6,background:"var(--g2)",border:"1px solid var(--yellow)",minWidth:160,zIndex:300}} onClick={() => setShowUserMenu(false)}>
+                {!user && (
+                  <div className="menu-item" onClick={() => { setAuthMode("signup"); setShowAuthModal(true); }}>Sign Up</div>
+                )}
+                {user && (
+                  <div className="menu-item" style={{color:"var(--muted)",cursor:"default",fontSize:".6rem",letterSpacing:".05em"}}>
+                    Signed in
+                  </div>
+                )}
+                {!user && (
+                  <div className="menu-item" onClick={() => { setAuthMode("login"); setShowAuthModal(true); }}>Sign In</div>
+                )}
+                {user && !Auth.isPaid() && (
+                  <div className="menu-item" style={{color:"var(--yellow)"}} onClick={() => setShowPaywall(true)}>⭐ Upgrade</div>
+                )}
+                {user && Auth.isPaid() && (
+                  <div className="menu-item" style={{color:"var(--yellow)",cursor:"default"}}>⭐ {user.tier === "unlimited" ? "Unlimited+Save" : user.tier === "premium" ? "Premium" : "Basic"}</div>
+                )}
+                {user && (
+                  <div className="menu-item" style={{color:"var(--red)"}} onClick={handleLogout}>Sign Out</div>
+                )}
+              </div>
             )}
           </div>
         </div>
