@@ -758,6 +758,7 @@ export default function App() {
   const [authErr,        setAuthErr]        = useState(null);
   const [authBusy,       setAuthBusy]       = useState(false);
   const [showUserMenu,   setShowUserMenu]   = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
 
   // All useCallback hooks next — defined in dependency order
   const resetHome = useCallback(() => {
@@ -1027,19 +1028,14 @@ export default function App() {
                 {!user && (
                   <div className="menu-item" onClick={() => { setAuthMode("signup"); setShowAuthModal(true); }}>Sign Up</div>
                 )}
-                {user && (
-                  <div className="menu-item" style={{color:"var(--muted)",cursor:"default",fontSize:".6rem",letterSpacing:".05em"}}>
-                    Signed in
-                  </div>
-                )}
                 {!user && (
                   <div className="menu-item" onClick={() => { setAuthMode("login"); setShowAuthModal(true); }}>Sign In</div>
                 )}
-                {user && !Auth.isPaid() && (
-                  <div className="menu-item" style={{color:"var(--yellow)"}} onClick={() => setShowPaywall(true)}>⭐ Upgrade</div>
+                {user && (
+                  <div className="menu-item" onClick={() => setShowAccountModal(true)}>Account</div>
                 )}
-                {user && Auth.isPaid() && (
-                  <div className="menu-item" style={{color:"var(--yellow)",cursor:"default"}}>⭐ {user.tier === "unlimited" ? "Unlimited+Save" : user.tier === "premium" ? "Premium" : "Basic"}</div>
+                {user && (
+                  <div className="menu-item" onClick={() => setShowPaywall(true)}>Upgrade</div>
                 )}
                 {user && (
                   <div className="menu-item" style={{color:"var(--red)"}} onClick={handleLogout}>Sign Out</div>
@@ -1436,6 +1432,41 @@ export default function App() {
             ))}
           </div>
 
+        </div>
+      )}
+
+      {/* ACCOUNT MODAL */}
+      {showAccountModal && user && (
+        <div className="auth-overlay" onClick={() => setShowAccountModal(false)}>
+          <div className="auth-modal" onClick={e => e.stopPropagation()}>
+            <button style={{position:"absolute",top:12,right:16,background:"none",border:"none",color:"#555",fontSize:"1.2rem",cursor:"pointer"}} onClick={() => setShowAccountModal(false)}>✕</button>
+            <div className="auth-title">MY ACCOUNT</div>
+            <div style={{marginBottom:20}}>
+              <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",letterSpacing:".08em",marginBottom:4}}>NAME</div>
+              <div style={{fontFamily:"var(--body)",fontSize:"1rem",color:"var(--white)"}}>{user.name}</div>
+            </div>
+            <div style={{marginBottom:20}}>
+              <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",letterSpacing:".08em",marginBottom:4}}>EMAIL</div>
+              <div style={{fontFamily:"var(--body)",fontSize:"1rem",color:"var(--white)"}}>{user.email}</div>
+            </div>
+            <div style={{marginBottom:24}}>
+              <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",letterSpacing:".08em",marginBottom:4}}>CURRENT PLAN</div>
+              <div style={{fontFamily:"var(--display)",fontSize:"1.4rem",color:"var(--yellow)",letterSpacing:".06em"}}>
+                {user.tier === "unlimited" ? "UNLIMITED+SAVE" : user.tier === "premium" ? "PREMIUM" : user.tier === "basic" ? "BASIC" : "FREE"}
+              </div>
+              <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",marginTop:4}}>
+                {user.tier === "unlimited" ? "Unlimited searches + saved locations list" :
+                 user.tier === "premium"   ? "Unlimited searches" :
+                 user.tier === "basic"     ? "999 searches per period" :
+                 "8 free searches"}
+              </div>
+            </div>
+            {user.tier !== "unlimited" && (
+              <button className="auth-btn" onClick={() => { setShowAccountModal(false); setShowPaywall(true); }}>
+                UPGRADE PLAN →
+              </button>
+            )}
+          </div>
         </div>
       )}
 
