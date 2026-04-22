@@ -1,6 +1,79 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 
 const API = import.meta.env?.VITE_BACKEND_URL || "https://street-park-info-backend.onrender.com";
+const GOOGLE_KEY = import.meta.env?.VITE_GOOGLE_MAPS_KEY || "";
+
+// ─── GOOGLE PLACES AUTOCOMPLETE INPUT ────────────────────────────────────────
+function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter, onGPSClick, showDropdown }) {
+  const inputRef = useRef(null);
+  const autocompleteRef = useRef(null);
+
+  useEffect(() => {
+    if (!GOOGLE_KEY || !inputRef.current) return;
+
+    const loadGoogle = () => {
+      if (window.google?.maps?.places) {
+        initAutocomplete();
+        return;
+      }
+      if (document.querySelector('script[src*="maps.googleapis"]')) return;
+      const script = document.createElement("script");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&libraries=places`;
+      script.async = true;
+      script.onload = initAutocomplete;
+      document.head.appendChild(script);
+    };
+
+    const initAutocomplete = () => {
+      if (!inputRef.current || !window.google?.maps?.places) return;
+      const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+        componentRestrictions: { country: "us" },
+        fields: ["formatted_address", "geometry", "name", "address_components"],
+        types: ["geocode", "establishment"],
+      });
+      ac.addListener("place_changed", () => {
+        const place = ac.getPlace();
+        if (place.geometry?.location) {
+          const lat = place.geometry.location.lat();
+          const lng = place.geometry.location.lng();
+          const label = place.name || place.formatted_address || "";
+          onPlaceSelect({ lat, lng, label, formatted: place.formatted_address });
+        }
+      });
+      autocompleteRef.current = ac;
+    };
+
+    loadGoogle();
+  }, []);
+
+  return (
+    <div style={{position:"relative",flex:1}}>
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Street, neighborhood, landmark, address…"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onKeyDown={e => e.key === "Enter" && onEnter()}
+        style={{width:"100%",background:"transparent",border:"none",outline:"none",color:"var(--white)",fontFamily:"var(--mono)",fontSize:".9rem",padding:"16px 20px",letterSpacing:".04em",boxSizing:"border-box"}}
+      />
+      {/* GPS dropdown option — shows when focused and no query typed */}
+      {showDropdown && (
+        <div className="search-dropdown">
+          <div className="search-dropdown-item" onMouseDown={onGPSClick}>
+            <span style={{marginRight:10,fontSize:"1.1rem"}}>📍</span>
+            <div>
+              <div className="search-dropdown-label">Use my current location</div>
+              <div className="search-dropdown-sub">Automatically find streets near you</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── STORAGE (plain functions, no hooks) ──────────────────────────────────────
 const Storage = {
@@ -376,6 +449,26 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 .p-cta{margin-top:13px;display:block;width:100%;text-align:center;background:var(--black);color:var(--yellow);font-family:var(--display);font-size:1.1rem;letter-spacing:.1em;padding:10px;border:none;cursor:pointer;transition:opacity .15s}
 .p-cta:hover{opacity:.8}
 .empty{font-family:var(--mono);font-size:.68rem;color:#444;padding:14px 0}
+.cities-sub{font-family:var(--mono);font-size:.65rem;color:var(--yellow);letter-spacing:.1em;margin-bottom:24px}
+.search-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--g2);border:1px solid var(--yellow);border-top:none;z-index:9999}
+.search-dropdown-item{display:flex;align-items:center;padding:14px 16px;cursor:pointer;transition:background .15s}
+.search-dropdown-item:hover{background:#2a2a2a}
+.search-dropdown-label{font-family:var(--body);font-size:1rem;font-weight:600;color:var(--white)}
+.search-dropdown-sub{font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-top:2px}
+/* Google Places autocomplete dark theme */
+.pac-container{background:var(--g2)!important;border:1px solid var(--yellow)!important;border-top:none!important;font-family:var(--mono)!important;z-index:9999!important;box-shadow:none!important}
+.pac-item{background:var(--g2)!important;color:var(--white)!important;border-top:1px solid #222!important;padding:10px 16px!important;cursor:pointer!important;font-size:.8rem!important}
+.pac-item:hover,.pac-item-selected{background:#2a2a2a!important}
+.pac-item-query{color:var(--yellow)!important;font-size:.85rem!important}
+.pac-matched{color:var(--yellow)!important}
+.pac-icon{display:none!important}
+.stats-section{width:100%;max-width:540px;margin-top:32px;padding-top:24px;border-top:1px solid #1f1f1f}
+.stats-eyebrow{font-family:var(--mono);font-size:.7rem;color:var(--yellow);letter-spacing:.1em;margin-bottom:16px}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+.stat-card{background:var(--g2);padding:12px 14px}
+.stat-city{font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:.08em;margin-bottom:4px;text-transform:uppercase}
+.stat-num{font-family:var(--display);font-size:1.3rem;color:var(--red);letter-spacing:.02em;line-height:1}
+.stat-meta{font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:.03em;margin-top:3px;line-height:1.4}
 .home-btn{background:none;border:1px solid #333;color:#888;font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;padding:5px 12px;cursor:pointer;transition:all .15s;position:absolute;left:50%;transform:translateX(-50%)}
 .home-btn:hover{border-color:var(--yellow);color:var(--yellow)}
 .hero-eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;color:var(--yellow);margin-bottom:12px;display:block}
@@ -444,6 +537,8 @@ export default function App() {
   const [savedSearches,  setSavedSearches]  = useState(() => Storage.getSaved());
   const [showHistory,    setShowHistory]    = useState(false);
   const [homeMapCoords,  setHomeMapCoords]  = useState(null);
+  const [searchFocused,  setSearchFocused]  = useState(false);
+  const [locationAllowed, setLocationAllowed] = useState(null); // null=unknown, true, false
 
   // All useCallback hooks next — defined in dependency order
   const resetHome = useCallback(() => {
@@ -541,7 +636,36 @@ export default function App() {
     );
   }, [canSearch, tickSearch, loadAll]);
 
-  const handleCheckout = useCallback(async (plan) => {
+  // When Google Places Autocomplete selects a place directly
+  const handlePlaceSelect = useCallback(async ({ lat, lng, label, formatted }) => {
+    if (!canSearch()) return;
+    tickSearch();
+    setErr(null); setPhase("loading");
+    try {
+      // Use our backend to get nearby streets for this location
+      const r = await fetch(`${API}/api/reverse-geocode?lat=${lat}&lng=${lng}`);
+      const loc = await r.json();
+      if (!r.ok) throw new Error("Could not find streets near this location");
+      await loadAll({ ...loc, lat, lng, label: label || formatted || loc.label });
+    } catch(e) { setErr(e.message); setPhase("home"); }
+  }, [canSearch, tickSearch, loadAll]);
+
+  const handleSearchFocus = useCallback(() => {
+    setSearchFocused(true);
+    // Request location when user taps search bar if not yet determined
+    if (locationAllowed === null && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords: { latitude, longitude } }) => {
+          setLocationAllowed(true);
+          setHomeMapCoords({ lat: latitude, lng: longitude });
+        },
+        () => {
+          setLocationAllowed(false);
+          if (!homeMapCoords) setHomeMapCoords({ lat: 40.7580, lng: -73.9855 });
+        }
+      );
+    }
+  }, [locationAllowed, homeMapCoords]);
     setCheckoutBusy(plan);
     try {
       const r = await fetch(`${API}/create-checkout-session`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ plan, phone, street: locData?.street || "" }) });
@@ -566,15 +690,28 @@ export default function App() {
     if (window.__AUTO_GPS__) { window.__AUTO_GPS__ = false; setTimeout(handleGPS, 500); }
   }, [handleGPS]);
 
-  // Silent GPS for home screen heat map — falls back to NYC if denied
+  // Check location permission on load — show map immediately if allowed
   useEffect(() => {
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        ({ coords: { latitude, longitude } }) => setHomeMapCoords({ lat: latitude, lng: longitude }),
-        () => setHomeMapCoords({ lat: 40.7580, lng: -73.9855 }) // default to Times Square
-      );
-    } else {
-      setHomeMapCoords({ lat: 40.7580, lng: -73.9855 });
+      navigator.permissions?.query({ name: "geolocation" }).then(perm => {
+        if (perm.state === "granted") {
+          setLocationAllowed(true);
+          navigator.geolocation.getCurrentPosition(
+            ({ coords: { latitude, longitude } }) => setHomeMapCoords({ lat: latitude, lng: longitude }),
+            () => setHomeMapCoords({ lat: 40.7580, lng: -73.9855 })
+          );
+        } else if (perm.state === "denied") {
+          setLocationAllowed(false);
+          setHomeMapCoords({ lat: 40.7580, lng: -73.9855 });
+        }
+        // if "prompt", wait until user clicks search bar
+      }).catch(() => {
+        // Permissions API not supported — just try silently
+        navigator.geolocation.getCurrentPosition(
+          ({ coords: { latitude, longitude } }) => { setLocationAllowed(true); setHomeMapCoords({ lat: latitude, lng: longitude }); },
+          () => { setLocationAllowed(false); setHomeMapCoords({ lat: 40.7580, lng: -73.9855 }); }
+        );
+      });
     }
   }, []);
 
@@ -606,29 +743,37 @@ export default function App() {
       {/* HOME */}
       {phase === "home" && (
         <div className="home">
-          <div className="hero-eyebrow">😤 Tired of expensive parking tickets?</div>
+          {/* HERO */}
           <h1 className="h1">KNOW BEFORE<br /><em>YOU PARK.</em></h1>
-          <div className="ticket-stat">
-            <div className="ticket-stat-num">16,092,421</div>
-            <div className="ticket-stat-label">parking tickets issued in NYC last year alone · avg. <strong>$65</strong> each · totaling over <strong>$1 billion</strong></div>
-          </div>
-          <p className="sub">Street cleaning · Film shoots · Events · Weather<br /><strong>NYC · LA · Chicago · SF · Boston · Philly · DC · Seattle</strong></p>
+          <p className="sub">Street cleaning · Film shoots · Events · Weather — every reason you'd get a ticket, all in one place.</p>
+          <p className="cities-sub">NYC · LA · Chicago · SF · Boston · Philly · DC · Seattle</p>
+
+          {/* SEARCH with dropdown */}
           <div className="search-wrap">
             {!isSubscribed && searchCount > 0 && (
               <div className="gate-note" style={{color: remaining === 0 ? "var(--red)" : "var(--yellow)"}}>
                 {remaining === 0 ? "⚠ Free searches used — subscribe to continue" : `${remaining} free search${remaining === 1 ? "" : "es"} remaining`}
               </div>
             )}
-            <div className="search-box">
-              <input type="text" placeholder="Broadway, Wicker Park, Silver Lake, 90210, Fenway…" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} autoFocus />
-              <button onClick={handleSearch}>LOOK UP</button>
+            <div className="search-box-wrap" style={{position:"relative"}}>
+              <div className="search-box">
+                <PlacesInput
+                  value={query}
+                  onChange={setQuery}
+                  onPlaceSelect={handlePlaceSelect}
+                  onFocus={handleSearchFocus}
+                  onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                  onEnter={handleSearch}
+                  onGPSClick={handleGPS}
+                  showDropdown={searchFocused && !query}
+                />
+                <button onClick={handleSearch}>LOOK UP</button>
+              </div>
             </div>
-            <div className="or">— or —</div>
-            <button className="gps-btn" onClick={handleGPS}>📍 Use my current location</button>
             {err && <div className="err">⚠ {err}</div>}
           </div>
 
-          {/* HEAT MAP — shows when location is available */}
+          {/* HEAT MAP */}
           {homeMapCoords && (
             <div style={{width:"100%",maxWidth:540,marginTop:20}}>
               <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--yellow)",letterSpacing:".12em",textTransform:"uppercase",marginBottom:8}}>
@@ -642,14 +787,37 @@ export default function App() {
             </div>
           )}
 
+          {/* PARKING TICKET STATS */}
+          <div className="stats-section">
+            <div className="stats-eyebrow">😤 Tired of expensive parking tickets?</div>
+            <div className="stats-grid">
+              {[
+                { city:"New York City", tickets:"16,092,421", avg:"$65", total:"$1B+" },
+                { city:"Los Angeles", tickets:"3,800,000+", avg:"$73", total:"$280M+" },
+                { city:"Chicago", tickets:"3,200,000+", avg:"$60", total:"$192M+" },
+                { city:"San Francisco", tickets:"1,900,000+", avg:"$85", total:"$162M+" },
+                { city:"Boston", tickets:"800,000+", avg:"$60", total:"$48M+" },
+                { city:"Philadelphia", tickets:"900,000+", avg:"$51", total:"$46M+" },
+                { city:"Washington DC", tickets:"1,200,000+", avg:"$100", total:"$120M+" },
+                { city:"Seattle", tickets:"500,000+", avg:"$47", total:"$24M+" },
+              ].map(s => (
+                <div key={s.city} className="stat-card">
+                  <div className="stat-city">{s.city}</div>
+                  <div className="stat-num">{s.tickets}</div>
+                  <div className="stat-meta">tickets/yr · avg {s.avg} · {s.total} collected</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* WE'LL MOVE YOUR CAR */}
           <div className="move-car-banner">
             <span className="move-car-badge">COMING SOON</span>
             <div className="move-car-title">🚗 WE'LL MOVE YOUR CAR</div>
             <div className="move-car-sub">
               Can't move your car in time? We'll send a trusted driver to move it for you.<br/>
-              Available for vehicles with smart key access · Safe, insured, background-checked drivers.<br/>
-              <span style={{color:"#aaaaff",marginTop:4,display:"block"}}>Join the waitlist →</span>
+              Available for vehicles with smart key access · Safe, insured, background-checked drivers.
+              <span style={{color:"#aaaaff",marginTop:6,display:"block",cursor:"pointer"}}>Join the waitlist →</span>
             </div>
           </div>
         </div>
