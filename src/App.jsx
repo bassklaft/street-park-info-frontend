@@ -58,7 +58,7 @@ function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter,
       <input
         ref={inputRef}
         type="text"
-        placeholder="Street, neighborhood, landmark, address…"
+        placeholder="Street, Neighborhood, Landmark, Address…"
         value={value}
         onChange={e => onChange(e.target.value)}
         onFocus={onFocus}
