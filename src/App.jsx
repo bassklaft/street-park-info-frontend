@@ -666,6 +666,8 @@ export default function App() {
       );
     }
   }, [locationAllowed, homeMapCoords]);
+
+  const handleCheckout = useCallback(async (plan) => {
     setCheckoutBusy(plan);
     try {
       const r = await fetch(`${API}/create-checkout-session`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ plan, phone, street: locData?.street || "" }) });
