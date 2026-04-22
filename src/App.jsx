@@ -774,7 +774,7 @@ export default function App() {
 
       {/* NAV */}
       <nav className="nav">
-        <div className="logo" onClick={resetHome} style={{cursor:"pointer"}}>MOVE YOUR <span>CAR</span></div>
+        <div className="logo" onClick={resetHome} style={{cursor:"pointer"}}>MOVE MY <span>CAR</span></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span className="pill">NYC+</span>
           {phase === "dash" && <button className="pill ghost" onClick={resetHome}>↺ CHANGE</button>}
@@ -789,7 +789,7 @@ export default function App() {
       {phase === "home" && (
         <div className="home">
           {/* HERO */}
-          <h1 className="h1">MOVE YOUR<br /><em>CAR.</em></h1>
+          <h1 className="h1">MOVE MY<br /><em>CAR.</em></h1>
           <p className="app-tagline">Street Parking Info For Your City</p>
           <p className="sub">Street cleaning · Film shoots · Events · Weather — every reason you'd get a ticket, all in one place.</p>
           <p className="cities-sub">NYC · LA · Chicago · SF · Boston · Philly · DC · Seattle</p>
