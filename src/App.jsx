@@ -764,6 +764,7 @@ export default function App() {
     if (Auth.isPaid()) return true;
     if (Auth.isLoggedIn() && count < 8) return true;
     if (!Auth.isLoggedIn() && count < 1) return true;
+    // Maxed out
     if (!Auth.isLoggedIn()) { setShowAuthModal(true); return false; }
     setShowPaywall(true); return false;
   }, []);
@@ -987,7 +988,8 @@ export default function App() {
   const severeNow    = wxNow?.weather_code && SEVERE.has(wxNow.weather_code);
   const isMulti      = locData?.isPark || locData?.isZip || locData?.isNeighborhood || locData?.isGPS;
   const histPins     = showHistory && isSubscribed ? savedSearches.filter(s => s.label !== (locData?.label || locData?.street)) : [];
-  const remaining    = Math.max(0, 2 - searchCount);
+  const limit      = Auth.isLoggedIn() ? 8 : 1;
+  const remaining  = Math.max(0, limit - searchCount);
 
   return (
     <>
@@ -1027,7 +1029,9 @@ export default function App() {
             <div className="search-section">
               {!isSubscribed && searchCount > 0 && (
                 <div className="gate-note" style={{color: remaining === 0 ? "var(--red)" : "var(--yellow)"}}>
-                  {remaining === 0 ? "⚠ Free searches used — subscribe to continue" : `${remaining} free search${remaining === 1 ? "" : "es"} remaining`}
+                  {remaining === 0
+                    ? Auth.isLoggedIn() ? "⚠ Free searches used — subscribe to continue" : "⚠ Sign up free to get 8 searches"
+                    : `${remaining} free search${remaining === 1 ? "" : "es"} remaining`}
                 </div>
               )}
               <div style={{position:"relative"}}>
