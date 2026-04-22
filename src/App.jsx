@@ -379,7 +379,7 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 .h1{font-family:var(--display);font-size:clamp(3.2rem,10vw,5.5rem);letter-spacing:.04em;line-height:.95;margin-bottom:12px;white-space:nowrap}
 .h1 em{color:var(--yellow);font-style:normal}
 .app-tagline{font-family:var(--body);font-size:1.1rem;color:#888;letter-spacing:.06em;margin-bottom:28px}
-.search-section{width:100%;max-width:560px;padding:0 20px}
+.search-section{width:100%;max-width:560px;padding:0 20px;margin:0 auto}
 .gate-note{font-family:var(--mono);font-size:.62rem;letter-spacing:.08em;text-align:center;margin-bottom:10px}
 .search-box{display:flex;border:2px solid var(--yellow);background:var(--g2);border-radius:4px;overflow:hidden}
 .search-box input{flex:1;background:none;border:none;outline:none;color:var(--white);font-family:var(--mono);font-size:.9rem;padding:14px 18px;letter-spacing:.04em}
@@ -389,8 +389,8 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 /* CAROUSEL */
 .carousel-section{width:100%;padding:24px 0;border-bottom:1px solid #1f1f1f;overflow:hidden}
 .carousel-label{font-family:var(--mono);font-size:.6rem;color:var(--yellow);letter-spacing:.15em;text-transform:uppercase;text-align:center;margin-bottom:14px}
-.carousel-track{display:flex;gap:12px;animation:scrollLeft 30s linear infinite;width:max-content;padding:0 12px}
-.carousel-track:hover{animation-play-state:paused}
+.carousel-track{display:flex;gap:12px;width:max-content;padding:0 12px;cursor:grab;user-select:none;will-change:transform}
+.carousel-track.dragging{cursor:grabbing}
 .carousel-card{background:var(--g2);border:1px solid #2a2a2a;border-radius:8px;padding:16px 20px;min-width:200px;flex-shrink:0}
 .carousel-card-city{font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}
 .carousel-card-num{font-family:var(--display);font-size:1.8rem;color:var(--red);line-height:1;margin-bottom:4px}
@@ -570,6 +570,86 @@ inset:0;background:rgba(0,0,0,.92);z-index:500;display:flex;align-items:flex-end
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @media(max-width:520px){.cards{grid-template-columns:1fr 1fr}.prices{flex-direction:column}.wx-row{flex-direction:column}}
 `;
+
+// ─── DRAGGABLE CAROUSEL ───────────────────────────────────────────────────────
+const CITY_STATS = [
+  { city:"New York City", tickets:"16,092,421", avg:"$65", total:"$1B+" },
+  { city:"Los Angeles", tickets:"3,800,000+", avg:"$73", total:"$280M+" },
+  { city:"Chicago", tickets:"3,200,000+", avg:"$60", total:"$192M+" },
+  { city:"San Francisco", tickets:"1,900,000+", avg:"$85", total:"$162M+" },
+  { city:"Boston", tickets:"800,000+", avg:"$60", total:"$48M+" },
+  { city:"Philadelphia", tickets:"900,000+", avg:"$51", total:"$46M+" },
+  { city:"Washington DC", tickets:"1,200,000+", avg:"$100", total:"$120M+" },
+  { city:"Seattle", tickets:"500,000+", avg:"$47", total:"$24M+" },
+];
+
+function DraggableCarousel() {
+  const trackRef = useRef(null);
+  const posRef = useRef(0);
+  const dragRef = useRef({ active: false, startX: 0, startPos: 0 });
+  const animRef = useRef(null);
+  const pausedRef = useRef(false);
+  const SPEED = 0.4; // px per frame — slower = nicer
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const halfWidth = track.scrollWidth / 2;
+
+    const animate = () => {
+      if (!pausedRef.current) {
+        posRef.current -= SPEED;
+        if (Math.abs(posRef.current) >= halfWidth) posRef.current = 0;
+        track.style.transform = `translateX(${posRef.current}px)`;
+      }
+      animRef.current = requestAnimationFrame(animate);
+    };
+    animRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animRef.current);
+  }, []);
+
+  const onMouseDown = (e) => {
+    pausedRef.current = true;
+    dragRef.current = { active: true, startX: e.clientX, startPos: posRef.current };
+    trackRef.current?.classList.add("dragging");
+  };
+  const onMouseMove = (e) => {
+    if (!dragRef.current.active) return;
+    const dx = e.clientX - dragRef.current.startX;
+    posRef.current = dragRef.current.startPos + dx;
+    if (trackRef.current) trackRef.current.style.transform = `translateX(${posRef.current}px)`;
+  };
+  const onMouseUp = () => { dragRef.current.active = false; pausedRef.current = false; trackRef.current?.classList.remove("dragging"); };
+
+  const onTouchStart = (e) => {
+    pausedRef.current = true;
+    dragRef.current = { active: true, startX: e.touches[0].clientX, startPos: posRef.current };
+  };
+  const onTouchMove = (e) => {
+    if (!dragRef.current.active) return;
+    const dx = e.touches[0].clientX - dragRef.current.startX;
+    posRef.current = dragRef.current.startPos + dx;
+    if (trackRef.current) trackRef.current.style.transform = `translateX(${posRef.current}px)`;
+  };
+  const onTouchEnd = () => { dragRef.current.active = false; pausedRef.current = false; };
+
+  return (
+    <div style={{overflow:"hidden",width:"100%"}}
+      onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+    >
+      <div ref={trackRef} className="carousel-track">
+        {[...CITY_STATS, ...CITY_STATS].map((s, i) => (
+          <div key={i} className="carousel-card">
+            <div className="carousel-card-city">{s.city}</div>
+            <div className="carousel-card-num">{s.tickets}</div>
+            <div className="carousel-card-meta">tickets/yr · avg <strong>{s.avg}</strong> · <strong>{s.total}</strong></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ─── COMPONENT ────────────────────────────────────────────────────────────────
 export default function App() {
@@ -793,7 +873,7 @@ export default function App() {
 
       {/* NAV */}
       <nav className="nav">
-        <div className="logo" onClick={resetHome} style={{cursor:"pointer"}}>MOVE MY <span>CAR</span></div>
+        <div className="logo" onClick={resetHome} style={{cursor:"pointer"}}><span>MOVE</span> MY CAR</div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span className="pill">NYC+</span>
           {phase === "dash" && <button className="pill ghost" onClick={resetHome}>↺ CHANGE</button>}
@@ -850,24 +930,7 @@ export default function App() {
           {/* SCROLLING STATS CAROUSEL */}
           <div className="carousel-section">
             <div className="carousel-label">😤 Tired of parking tickets? You're not alone.</div>
-            <div className="carousel-track">
-              {[...Array(2)].flatMap(() => [
-                { city:"New York City", tickets:"16,092,421", avg:"$65", total:"$1B+" },
-                { city:"Los Angeles", tickets:"3,800,000+", avg:"$73", total:"$280M+" },
-                { city:"Chicago", tickets:"3,200,000+", avg:"$60", total:"$192M+" },
-                { city:"San Francisco", tickets:"1,900,000+", avg:"$85", total:"$162M+" },
-                { city:"Boston", tickets:"800,000+", avg:"$60", total:"$48M+" },
-                { city:"Philadelphia", tickets:"900,000+", avg:"$51", total:"$46M+" },
-                { city:"Washington DC", tickets:"1,200,000+", avg:"$100", total:"$120M+" },
-                { city:"Seattle", tickets:"500,000+", avg:"$47", total:"$24M+" },
-              ]).map((s, i) => (
-                <div key={i} className="carousel-card">
-                  <div className="carousel-card-city">{s.city}</div>
-                  <div className="carousel-card-num">{s.tickets}</div>
-                  <div className="carousel-card-meta">tickets/yr · avg <strong>{s.avg}</strong> · <strong>{s.total}</strong></div>
-                </div>
-              ))}
-            </div>
+            <DraggableCarousel />
           </div>
 
           {/* FEATURES */}
@@ -889,10 +952,10 @@ export default function App() {
             ))}
           </div>
 
-          {/* WE'LL MOVE MY CAR */}
+          {/* WE'LL MOVE YOUR CAR */}
           <div className="move-car-banner">
             <span className="move-car-badge">COMING SOON</span>
-            <div className="move-car-title">🚗 WE'LL MOVE MY CAR</div>
+            <div className="move-car-title">🚗 WE'LL MOVE YOUR CAR</div>
             <div className="move-car-sub">
               Can't move your car in time? We'll send a trusted driver.<br/>
               Smart key access only · Insured, background-checked drivers.
