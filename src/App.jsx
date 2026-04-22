@@ -618,6 +618,14 @@ const CITY_STATS = [
   { city:"Philadelphia", tickets:"900,000+", avg:"$51", total:"$46M+" },
   { city:"Washington DC", tickets:"1,200,000+", avg:"$100", total:"$120M+" },
   { city:"Seattle", tickets:"500,000+", avg:"$47", total:"$24M+" },
+  { city:"Miami", tickets:"1,100,000+", avg:"$40", total:"$44M+" },
+  { city:"Atlanta", tickets:"600,000+", avg:"$35", total:"$21M+" },
+  { city:"Toronto", tickets:"2,800,000+", avg:"$60", total:"$168M+" },
+  { city:"Denver", tickets:"400,000+", avg:"$50", total:"$20M+" },
+  { city:"Portland", tickets:"300,000+", avg:"$42", total:"$13M+" },
+  { city:"Nashville", tickets:"250,000+", avg:"$35", total:"$9M+" },
+  { city:"Austin", tickets:"350,000+", avg:"$45", total:"$16M+" },
+  { city:"Minneapolis", tickets:"280,000+", avg:"$40", total:"$11M+" },
 ];
 
 function DraggableCarousel() {
