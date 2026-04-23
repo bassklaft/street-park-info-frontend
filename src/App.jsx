@@ -505,7 +505,7 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 .chip{font-family:var(--mono);font-size:.78rem;padding:3px 8px;border:1px solid #2a2a2a;color:#555}
 .chip.on{background:var(--yellow);color:var(--black);border-color:var(--yellow)}
 .clean-time{font-family:var(--display);font-size:1.45rem;letter-spacing:.04em}
-.clean-raw{font-family:var(--mono);font-size:.78rem;color:#444;margin-top:3px;line-height:1.4}
+.clean-raw{font-family:var(--mono);font-size:.78rem;color:var(--white);margin-top:3px;line-height:1.4}
 .side-tag{display:inline-block;font-family:var(--mono);font-size:.92rem;padding:2px 7px;border:1px solid #2a2a2a;color:var(--yellow);margin-bottom:6px}
 .street-lbl{font-family:var(--mono);font-size:.82rem;color:var(--yellow);letter-spacing:.1em;margin-bottom:6px;text-transform:uppercase}
 .ev-card{background:var(--g2);border:1px solid #222;border-left:3px solid var(--blue);padding:13px 16px;margin-bottom:8px}
