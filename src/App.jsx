@@ -457,16 +457,33 @@ function CoverageMap({ onCityClick }) {
         });
       });
 
-      // Add Ontario highlight (not in US GeoJSON) as a polygon around Toronto area
+      // Add Ontario highlight (not in US GeoJSON) — larger radius + marker
       new window.google.maps.Circle({
-        center: { lat: 43.6532, lng: -79.3832 },
-        radius: 80000,
+        center: { lat: 43.7500, lng: -79.3832 },
+        radius: 180000,
         fillColor: "#ffffff",
         fillOpacity: 0.15,
         strokeColor: "#ffffff",
         strokeOpacity: 0.6,
-        strokeWeight: 1,
+        strokeWeight: 1.5,
         map,
+      });
+      // Ontario label marker
+      new window.google.maps.Marker({
+        position: { lat: 44.2, lng: -79.3832 },
+        map,
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 0,
+        },
+        label: {
+          text: "ONTARIO",
+          color: "rgba(255,255,255,0.7)",
+          fontFamily: "monospace",
+          fontSize: "9px",
+          fontWeight: "600",
+        },
+        title: "Ontario, Canada",
       });
     };
     if (window.google?.maps) { loadMap(); return; }
@@ -888,26 +905,36 @@ function DraggableCarousel() {
   const trackRef = useRef(null);
   const posRef = useRef(0);
   const halfWidthRef = useRef(0);
-  const dragRef = useRef({ active: false, startX: 0, startPos: 0 });
+  const dragRef = useRef({ active: false, startX: 0, startPos: 0, lastX: 0, velocity: 0 });
   const animRef = useRef(null);
   const pausedRef = useRef(false);
+  const momentumRef = useRef(0);
   const SPEED = 0.8;
 
   useEffect(() => {
     const track = trackRef.current;
     if (!track) return;
 
-    // Wait for layout then measure half width
     const measure = () => { halfWidthRef.current = track.scrollWidth / 2; };
     measure();
     window.addEventListener("resize", measure);
 
     const animate = () => {
-      if (!pausedRef.current) {
-        posRef.current -= SPEED;
-        // Seamless loop — when we've scrolled one full copy, reset silently
+      if (!dragRef.current.active) {
+        // Apply momentum when not dragging
+        if (Math.abs(momentumRef.current) > 0.05) {
+          posRef.current += momentumRef.current;
+          momentumRef.current *= 0.92; // deceleration
+        } else if (!pausedRef.current) {
+          posRef.current -= SPEED;
+          momentumRef.current = 0;
+        }
+        // Seamless loop
         if (halfWidthRef.current > 0 && Math.abs(posRef.current) >= halfWidthRef.current) {
           posRef.current += halfWidthRef.current;
+        }
+        if (halfWidthRef.current > 0 && posRef.current > 0) {
+          posRef.current -= halfWidthRef.current;
         }
         track.style.transform = `translateX(${posRef.current}px)`;
       }
@@ -923,15 +950,17 @@ function DraggableCarousel() {
 
   const startDrag = (x) => {
     pausedRef.current = true;
-    dragRef.current = { active: true, startX: x, startPos: posRef.current };
+    momentumRef.current = 0;
+    dragRef.current = { active: true, startX: x, startPos: posRef.current, lastX: x, velocity: 0 };
     trackRef.current?.classList.add("dragging");
   };
 
   const moveDrag = (x) => {
     if (!dragRef.current.active) return;
+    dragRef.current.velocity = x - dragRef.current.lastX;
+    dragRef.current.lastX = x;
     const dx = x - dragRef.current.startX;
     let newPos = dragRef.current.startPos + dx;
-    // Keep within bounds for seamless loop
     if (halfWidthRef.current > 0) {
       while (newPos > 0) newPos -= halfWidthRef.current;
       while (newPos < -halfWidthRef.current) newPos += halfWidthRef.current;
@@ -941,9 +970,11 @@ function DraggableCarousel() {
   };
 
   const endDrag = () => {
+    if (!dragRef.current.active) return;
     dragRef.current.active = false;
     trackRef.current?.classList.remove("dragging");
-    // Resume from current position — no jump
+    // Pass velocity as momentum, then let auto-scroll resume
+    momentumRef.current = dragRef.current.velocity;
     pausedRef.current = false;
   };
 
