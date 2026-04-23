@@ -570,18 +570,11 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
 
   useEffect(() => {
     if (!userLat || !userLng || !divRef.current) return;
+    let alive = true;
+    const polylines = [];
 
-    // Reset draw flag for new location
-    _heatmap.drawn = false;
-
-    // If no data yet, start fetching
-    if (!_heatmap.data.length && !_heatmap.fetching) {
-      prefetchHeatmap(userLat, userLng);
-    }
-
-    // Init map
     const initMap = () => {
-      if (!divRef.current || !window.google?.maps) return;
+      if (!alive || !divRef.current || !window.google?.maps) return;
       const map = new window.google.maps.Map(divRef.current, {
         center: { lat: userLat, lng: userLng },
         zoom: 15,
@@ -607,25 +600,46 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
         icon: { path: window.google.maps.SymbolPath.CIRCLE, scale:8, fillColor:"#3182CE", fillOpacity:1, strokeColor:"#fff", strokeWeight:2 },
       });
 
-      _heatmap.map = map;
-      drawHeatmapStreets(); // draw if data already arrived
-
-      window.google.maps.event.addListenerOnce(map, "idle", drawHeatmapStreets);
-      setTimeout(drawHeatmapStreets, 5000);
-      setTimeout(drawHeatmapStreets, 15000); // final fallback for slow Overpass
+      fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
+        .then(r => r.ok ? r.json() : [])
+        .then(data => {
+          if (!alive || !Array.isArray(data) || !data.length) return;
+          console.log("HeatMap drawing", data.length, "polylines");
+          const colors = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#666666" };
+          const weights = { red:6, yellow:5, green:4, gray:3 };
+          data.forEach(s => {
+            if (!s.coords || s.coords.length < 2) return;
+            const path = s.coords.map(c => Array.isArray(c) ? {lat:c[0],lng:c[1]} : c);
+            const pl = new window.google.maps.Polyline({
+              path, map, geodesic: true,
+              strokeColor: colors[s.urgency] || colors.gray,
+              strokeOpacity: s.urgency === "gray" ? 0.6 : 0.9,
+              strokeWeight: weights[s.urgency] || 3,
+              zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
+            });
+            if (onStreetClick && s.street) {
+              pl.addListener("click", () => onStreetClick(s.street));
+            }
+            polylines.push(pl);
+          });
+        })
+        .catch(e => console.error("HeatMap fetch error:", e));
     };
 
     if (window.google?.maps) {
       initMap();
     } else if (document.querySelector('script[src*="maps.googleapis"]')) {
       const wait = setInterval(() => { if (window.google?.maps) { clearInterval(wait); initMap(); } }, 200);
+      return () => { alive = false; clearInterval(wait); polylines.forEach(p => p.setMap(null)); };
     } else {
       const s = document.createElement("script");
       s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&libraries=places&loading=async`;
-      s.onload = initMap;
+      s.onload = () => { if (alive) initMap(); };
       document.head.appendChild(s);
     }
-  }, [userLat, userLng]);
+
+    return () => { alive = false; polylines.forEach(p => p.setMap(null)); };
+  }, [userLat, userLng, onStreetClick]);
 
   return (
     <div style={{position:"relative",marginBottom:16}}>
