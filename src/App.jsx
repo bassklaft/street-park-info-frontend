@@ -1091,7 +1091,6 @@ export default function App() {
         },
         () => {
           setLocationAllowed(false);
-          if (!homeMapCoords) 
         }
       );
     }
