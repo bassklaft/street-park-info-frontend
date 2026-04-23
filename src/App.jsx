@@ -1676,11 +1676,49 @@ export default function App() {
                 {!weather ? <div className="empty">Weather data unavailable.</div> : (
                   <>
                     {severeNow && <div className="ev-card severe" style={{marginBottom:8}}><div className="ev-type">⚠ WEATHER ALERT</div><div className="ev-name">{WX[wxNow.weather_code]}</div><div className="ev-meta">May affect parking rules and street cleaning enforcement.</div></div>}
+
+                    {/* Today — next 5 hours hourly */}
+                    {weather.hourly && (() => {
+                      const now = new Date();
+                      const currentHour = now.getHours();
+                      const times = weather.hourly.time || [];
+                      const todayStr = now.toISOString().split("T")[0];
+                      const nextHours = times
+                        .map((t, i) => ({ t, i }))
+                        .filter(({ t }) => t.startsWith(todayStr) && parseInt(t.split("T")[1]) >= currentHour)
+                        .slice(0, 5);
+                      return (
+                        <div style={{marginBottom:12}}>
+                          <div style={{fontFamily:"var(--mono)",fontSize:".65rem",color:"var(--muted)",letterSpacing:".1em",marginBottom:6}}>TODAY · HOURLY</div>
+                          <div className="wx-row">
+                            {nextHours.map(({ t, i }) => {
+                              const hr = parseInt(t.split("T")[1]);
+                              const lbl = hr === 0 ? "12am" : hr < 12 ? `${hr}am` : hr === 12 ? "12pm" : `${hr-12}pm`;
+                              const code = weather.hourly.weather_code?.[i];
+                              const temp = weather.hourly.temperature_2m?.[i];
+                              const precip = weather.hourly.precipitation_probability?.[i];
+                              return (
+                                <div key={i} className="wx-day">
+                                  <div className="wx-date">{lbl}</div>
+                                  <div className="wx-icon">{wxIcon(code)}</div>
+                                  <div className="wx-lbl">{temp !== undefined ? `${Math.round(temp)}°` : "—"}</div>
+                                  {precip > 20 && <div className="wx-precip">💧{precip}%</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Tomorrow + Day after — daily */}
+                    <div style={{fontFamily:"var(--mono)",fontSize:".65rem",color:"var(--muted)",letterSpacing:".1em",marginBottom:6}}>UPCOMING</div>
                     <div className="wx-row">
-                      {(wxDaily?.time || []).slice(0,3).map((ds, i) => {
-                        const code = wxDaily.weather_code?.[i], rain = wxDaily.precipitation_sum?.[i], snow = wxDaily.snowfall_sum?.[i];
-                        if (ds === undefined || ds === null) return null;
-                        const lbl = i===0?"Today":i===1?"Tomorrow":new Date(ds+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+                      {(wxDaily?.time || []).slice(1,3).map((ds, i) => {
+                        const idx = i + 1;
+                        const code = wxDaily.weather_code?.[idx], rain = wxDaily.precipitation_sum?.[idx], snow = wxDaily.snowfall_sum?.[idx];
+                        if (!ds) return null;
+                        const lbl = i===0?"Tomorrow":new Date(ds+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
                         return (
                           <div key={i} className="wx-day">
                             <div className="wx-date">{lbl}</div>
