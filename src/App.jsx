@@ -338,7 +338,7 @@ function CoverageMap({ onCityClick }) {
         ],
       });
 
-      // Load GeoJSON state boundaries and highlight covered states
+      // Load GeoJSON state boundaries and highlight covered states white
       map.data.loadGeoJson(
         "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/US-state.geojson",
         null,
@@ -347,11 +347,11 @@ function CoverageMap({ onCityClick }) {
             const name = feature.getProperty("name");
             const isCovered = COVERED_STATES.includes(name);
             return {
-              fillColor: isCovered ? "#38A169" : "#111111",
-              fillOpacity: isCovered ? 0.35 : 0,
-              strokeColor: isCovered ? "#38A169" : "#333333",
-              strokeWeight: isCovered ? 1.5 : 0.5,
-              strokeOpacity: 0.8,
+              fillColor: isCovered ? "#ffffff" : "#111111",
+              fillOpacity: isCovered ? 0.15 : 0,
+              strokeColor: isCovered ? "#ffffff" : "#333333",
+              strokeWeight: isCovered ? 1 : 0.5,
+              strokeOpacity: isCovered ? 0.6 : 0.4,
             };
           });
         }
@@ -390,7 +390,7 @@ function CoverageMap({ onCityClick }) {
       <div ref={ref} style={{width:"100%",height:"300px",border:"1px solid #2a2a2a",background:"#111"}} />
       <div style={{display:"flex",gap:16,padding:"8px 12px",background:"var(--g2)",borderTop:"1px solid #222",alignItems:"center"}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <div style={{width:16,height:8,background:"rgba(56,161,105,0.35)",border:"1.5px solid #38A169",borderRadius:2}} />
+          <div style={{width:16,height:8,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.6)",borderRadius:2}} />
           <span style={{fontFamily:"var(--mono)",fontSize:".65rem",color:"var(--white)"}}>Covered state</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
