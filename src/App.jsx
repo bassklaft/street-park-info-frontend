@@ -410,20 +410,27 @@ function prefetchHeatmap(lat, lng) {
   if (_heatmap.fetching) return;
   _heatmap.fetching = true;
   _heatmap.drawn = false;
+  _heatmap.data = [];
   fetch(`${API}/api/heatmap?lat=${lat}&lng=${lng}`)
     .then(r => r.ok ? r.json() : [])
     .then(data => {
       console.log("Heatmap prefetch:", data.length, "streets");
       _heatmap.data = data;
       _heatmap.fetching = false;
+      _heatmap.drawn = false;
       drawHeatmapStreets();
     })
     .catch(() => { _heatmap.fetching = false; });
 }
 
 function drawHeatmapStreets() {
-  if (!_heatmap.map || !_heatmap.data.length || _heatmap.drawn) return;
-  if (!window.google?.maps) return;
+  if (!_heatmap.data.length) return;
+  if (!_heatmap.map || !window.google?.maps) {
+    // Retry every 500ms until map is ready
+    setTimeout(drawHeatmapStreets, 500);
+    return;
+  }
+  if (_heatmap.drawn) return;
   _heatmap.drawn = true;
   const colors = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#666666" };
   const weights = { red:6, yellow:5, green:4, gray:3 };
