@@ -485,9 +485,9 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 .hitem:hover{border-color:#333}
 .hdot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}
 .hdot.area{background:none;border:2px solid var(--green)}
-.hitem-label{font-family:var(--mono);font-size:.85rem;color:var(--white)}
-.hitem-meta{font-family:var(--mono);font-size:.76rem;color:var(--muted)}
-.hitem-ts{font-family:var(--mono);font-size:1.5rem;color:#444}
+.hitem-label{font-family:var(--mono);font-size:.75rem;color:var(--white)}
+.hitem-meta{font-family:var(--mono);font-size:.65rem;color:var(--muted)}
+.hitem-ts{font-family:var(--mono);font-size:.65rem;color:#666}
 .hclear{font-family:var(--mono);font-size:.85rem;color:#444;background:none;border:none;cursor:pointer;padding:6px 0;display:block}
 .hclear:hover{color:var(--red)}
 .gps-prompt{background:var(--g2);border:1px solid #2a2a2a;border-left:3px solid var(--yellow);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -1697,4 +1697,3 @@ export default function App() {
     </>
   );
 }
-
