@@ -369,24 +369,24 @@ function CoverageMap({ onCityClick }) {
         ],
       });
 
-      // Load GeoJSON state boundaries and highlight covered states white
-      map.data.loadGeoJson(
-        "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/US-state.geojson",
-        null,
-        () => {
+      // Load GeoJSON state boundaries
+      fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
+        .then(r => r.json())
+        .then(geojson => {
+          map.data.addGeoJson(geojson);
           map.data.setStyle(feature => {
             const name = feature.getProperty("name");
             const isCovered = COVERED_STATES.includes(name);
             return {
               fillColor: isCovered ? "#ffffff" : "#111111",
-              fillOpacity: isCovered ? 0.15 : 0,
+              fillOpacity: isCovered ? 0.12 : 0,
               strokeColor: isCovered ? "#ffffff" : "#333333",
               strokeWeight: isCovered ? 1 : 0.5,
-              strokeOpacity: isCovered ? 0.6 : 0.4,
+              strokeOpacity: isCovered ? 0.5 : 0.3,
             };
           });
-        }
-      );
+        })
+        .catch(() => console.log("GeoJSON failed to load"));
 
       // Add city markers on top
       COVERED_CITIES.forEach(city => {
@@ -822,7 +822,7 @@ function DraggableCarousel() {
   const dragRef = useRef({ active: false, startX: 0, startPos: 0 });
   const animRef = useRef(null);
   const pausedRef = useRef(false);
-  const SPEED = 0.4;
+  const SPEED = 0.8;
 
   useEffect(() => {
     const track = trackRef.current;
@@ -1129,13 +1129,34 @@ export default function App() {
   }, [locationAllowed, homeMapCoords]);
 
   const handleCheckout = useCallback(async (plan) => {
+    // Require login before checkout
+    if (!Auth.isLoggedIn()) {
+      setAuthMode("signup");
+      setShowAuthModal(true);
+      return;
+    }
     setCheckoutBusy(plan);
     try {
-      const r = await fetch(`${API}/create-checkout-session`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ plan, phone, street: locData?.street || "" }) });
+      const user = Auth.getUser();
+      const r = await fetch(`${API}/create-checkout-session`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ plan, email: user?.email, userId: user?.id, street: locData?.street || "" })
+      });
       const d = await r.json();
-      if (d.url) window.location.href = d.url;
-    } catch(e) { console.error(e); } finally { setCheckoutBusy(null); }
-  }, [phone, locData]);
+      if (d.url) {
+        window.location.href = d.url;
+      } else {
+        console.error("No URL from checkout:", d);
+        alert("Could not start checkout. Try again.");
+      }
+    } catch(e) {
+      console.error("Checkout error:", e);
+      alert("Checkout failed. Please try again.");
+    } finally {
+      setCheckoutBusy(null);
+    }
+  }, [locData]);
 
   const handleSignup = useCallback(async () => {
     if (phone.replace(/\D/g,"").length < 10) { setSignupErr("Enter a valid US phone number"); return; }
@@ -1465,8 +1486,13 @@ export default function App() {
               Can't move your car in time? We'll send a trusted driver.<br/>
               Smart key access only · Insured, background-checked drivers.
               <span style={{color:"#aaaaff",marginTop:6,display:"block",cursor:"pointer"}} onClick={() => {
+                if (!Auth.isLoggedIn()) {
+                  setAuthMode("signup");
+                  setShowAuthModal(true);
+                  return;
+                }
                 const userEmail = Auth.getUser()?.email || "";
-                const body = `Please put me on the We'll Move Your Car Waitlist!\n\nAccount info: ${userEmail}`;
+                const body = `Please put me on the We'll Move Your Car Waitlist!\n\nAccount Info: ${userEmail}`;
                 window.open(`mailto:streetparkinginfo@gmail.com?subject=We'll Move Your Car Waitlist&body=${encodeURIComponent(body)}`, "_blank");
               }}>Join the waitlist →</span>
             </div>
