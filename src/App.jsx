@@ -759,6 +759,7 @@ export default function App() {
   const [authBusy,       setAuthBusy]       = useState(false);
   const [showUserMenu,   setShowUserMenu]   = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showFAQ,        setShowFAQ]        = useState(false);
 
   // All useCallback hooks next — defined in dependency order
   const resetHome = useCallback(() => {
@@ -1037,6 +1038,7 @@ export default function App() {
                 {user && (
                   <div className="menu-item" onClick={() => setShowPaywall(true)}>Upgrade</div>
                 )}
+                <div className="menu-item" onClick={() => setShowFAQ(true)}>FAQ</div>
                 {user && (
                   <div className="menu-item" style={{color:"var(--red)"}} onClick={handleLogout}>Sign Out</div>
                 )}
@@ -1432,6 +1434,78 @@ export default function App() {
             ))}
           </div>
 
+        </div>
+      )}
+
+      {/* FAQ MODAL */}
+      {showFAQ && (
+        <div className="auth-overlay" onClick={() => setShowFAQ(false)}>
+          <div className="auth-modal" onClick={e => e.stopPropagation()} style={{maxHeight:"80vh",overflowY:"auto"}}>
+            <button style={{position:"absolute",top:12,right:16,background:"none",border:"none",color:"#555",fontSize:"1.2rem",cursor:"pointer"}} onClick={() => setShowFAQ(false)}>✕</button>
+            <div className="auth-title">FAQ</div>
+            {[
+              {
+                q: "Will this prevent me from ever getting a ticket again?",
+                a: "We can't guarantee that — and no app can. Street parking rules are complex, change frequently, and enforcement varies. What we can promise is that we work hard to surface the most accurate, up-to-date information available so you have the best possible chance of moving your car on time. Street Park Now is a tool to help you stay informed, not a substitute for reading posted signs. Always check the signs on your block — they are the legal authority."
+              },
+              {
+                q: "How accurate is the data?",
+                a: "We pull from official city databases, permit records, and real-time sources wherever possible. However, data can lag, cities update rules without notice, and special circumstances like holidays or emergency orders may not always be reflected immediately. We update our data regularly and are always working to improve coverage."
+              },
+              {
+                q: "Which cities are supported?",
+                a: "NYC, Los Angeles, Chicago, San Francisco, Boston, Philadelphia, Washington DC, Seattle, Miami, Atlanta, Toronto, Denver, Portland, Nashville, Austin, and Minneapolis — with more cities being added regularly."
+              },
+              {
+                q: "What does the heat map show?",
+                a: "The live parking heat map color-codes streets near you based on how soon street cleaning is scheduled. Red = move today or tomorrow. Yellow = move in 2-3 days. Green = safe for 4+ days. Gray = no data available."
+              },
+              {
+                q: "What's included in each plan?",
+                a: "Free Account: 8 searches total. Basic ($4.20/mo or $45/yr): 999 searches, last 2 searches shown on map. Premium ($5.79/mo or $58.99/yr): unlimited searches, last 2 on map. Unlimited+Save ($6.49/mo or $69.99/yr): unlimited searches + save up to 10 locations for one-tap access."
+              },
+              {
+                q: "How do I cancel my subscription?",
+                a: "You can cancel anytime. On iOS, go to Settings → Apple ID → Subscriptions → Street Park Now → Cancel. On the web, manage your subscription through your Stripe billing portal. Cancellations take effect at the end of your current billing period — you keep access until then."
+              },
+              {
+                q: "Can I get a refund?",
+                a: "We offer refunds within 48 hours of purchase if you haven't used more than 5 searches in that period. Contact us at support@streetparknow.app and we'll take care of you. Annual plans are refundable within 7 days of purchase."
+              },
+              {
+                q: "How do I upgrade or downgrade my plan?",
+                a: "Tap the ☰ menu → Upgrade to see all plans and select a new one. Upgrades take effect immediately. Downgrades take effect at the start of your next billing period."
+              },
+              {
+                q: "Is my payment information secure?",
+                a: "Yes. All payments are processed by Stripe, a PCI-compliant payment processor trusted by millions of businesses. We never see or store your credit card information."
+              },
+              {
+                q: "Is my location data stored?",
+                a: "Your location is used only to show nearby parking information in the moment. We do not store your location history or share it with third parties. See our Privacy Policy at streetparknow.vercel.app/privacy.html for full details."
+              },
+              {
+                q: "What is the Unlimited+Save feature?",
+                a: "With Unlimited+Save, you can save up to 10 locations and access them instantly from your home screen with one tap. Each saved location runs a full search including the live heat map. You manage which locations are saved using checkboxes — unchecked locations are removed when you return."
+              },
+              {
+                q: "Does the app work offline?",
+                a: "No — Street Park Now requires an internet connection to fetch live parking data, permits, and the heat map. We recommend checking before you park, not while you're parked with no signal."
+              },
+              {
+                q: "How do I contact support?",
+                a: "Email us at support@streetparknow.app. We typically respond within 24 hours on business days."
+              },
+            ].map((item, i, arr) => (
+              <div key={i} style={{marginBottom:24,paddingBottom:20,borderBottom:i < arr.length - 1 ? "1px solid #1f1f1f" : "none"}}>
+                <div style={{fontFamily:"var(--body)",fontWeight:700,fontSize:"1rem",color:"var(--yellow)",marginBottom:8}}>{item.q}</div>
+                <div style={{fontFamily:"var(--mono)",fontSize:".62rem",color:"var(--muted)",lineHeight:1.7,letterSpacing:".03em"}}>{item.a}</div>
+              </div>
+            ))}
+            <div style={{fontFamily:"var(--mono)",fontSize:".55rem",color:"#444",lineHeight:1.6,marginTop:8,paddingTop:16,borderTop:"1px solid #1f1f1f"}}>
+              Street Park Now is provided for informational purposes only. We make no warranties, express or implied, regarding the accuracy, completeness, or timeliness of any information. Use of this app does not constitute legal or parking advice. Street Park Now is not liable for any parking fines, towing charges, or other penalties incurred as a result of reliance on information provided by this app. Always check posted street signs — they are the legal authority.
+            </div>
+          </div>
         </div>
       )}
 
