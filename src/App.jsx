@@ -1077,11 +1077,13 @@ export default function App() {
 
   // All useCallback hooks next — defined in dependency order
   const openAuth = useCallback((mode = "signup") => {
+    window.scrollTo(0, 0);
     setAuthMode(mode);
     setShowAuthModal(true);
   }, []);
 
   const openPaywall = useCallback(() => {
+    window.scrollTo(0, 0);
     setShowPaywall(true);
   }, []);
 
@@ -1301,6 +1303,13 @@ export default function App() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  // Lock body scroll when modal open
+  useEffect(() => {
+    const isOpen = showAuthModal || showPaywall;
+    document.body.style.overflow = isOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [showAuthModal, showPaywall]);
 
   // useEffect last — after all useCallback
   useEffect(() => {
