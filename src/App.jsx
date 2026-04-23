@@ -999,6 +999,7 @@ function SavedLocationsPage({ onDone, onSelectLocation }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [editMode, setEditMode] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1053,71 +1054,108 @@ function SavedLocationsPage({ onDone, onSelectLocation }) {
     finally { setBusyId(null); }
   }, []);
 
+  const renderItemContent = (item) => (
+    <>
+      <div style={{fontFamily:"var(--body)",fontSize:"1.05rem",color:"var(--white)",letterSpacing:".02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+        {item.label}
+      </div>
+      {(item.neighborhood || item.borough || item.city) && (
+        <div style={{fontFamily:"var(--mono)",fontSize:".62rem",color:"var(--muted)",letterSpacing:".05em",marginTop:3}}>
+          {[item.neighborhood, item.borough, item.city].filter(Boolean).join(" · ")}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="dash" style={{maxWidth:600,paddingBottom:60}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 0 16px",borderBottom:"1px solid #1f1f1f",marginBottom:24}}>
-        <div style={{fontFamily:"var(--display)",fontSize:"1.8rem",letterSpacing:".06em"}}>SAVED LOCATIONS</div>
-        <button onClick={onDone} style={{background:"var(--yellow)",border:"none",color:"var(--black)",fontFamily:"var(--display)",fontSize:"1rem",letterSpacing:".1em",padding:"6px 18px",cursor:"pointer"}}>DONE</button>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 0 16px",borderBottom:"1px solid #1f1f1f",marginBottom:24,gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
+          <button onClick={onDone} style={{background:"none",border:"1px solid #333",color:"var(--white)",fontFamily:"var(--mono)",fontSize:".6rem",letterSpacing:".1em",padding:"5px 12px",cursor:"pointer",flexShrink:0}}>← BACK</button>
+          <div style={{fontFamily:"var(--display)",fontSize:"1.6rem",letterSpacing:".06em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>SAVED LOCATIONS</div>
+        </div>
+        <button
+          onClick={() => setEditMode(v => !v)}
+          style={{
+            background: editMode ? "var(--yellow)" : "none",
+            border: editMode ? "1px solid var(--yellow)" : "1px solid var(--yellow)",
+            color: editMode ? "var(--black)" : "var(--yellow)",
+            fontFamily:"var(--display)",
+            fontSize:".95rem",
+            letterSpacing:".1em",
+            padding:"6px 16px",
+            cursor:"pointer",
+            flexShrink:0,
+          }}
+        >
+          {editMode ? "DONE" : "EDIT"}
+        </button>
       </div>
 
-      <div style={{marginBottom:24}}>
-        <div style={{fontFamily:"var(--mono)",fontSize:".7rem",letterSpacing:".1em",color:atLimit?"var(--muted)":"var(--yellow)",textTransform:"uppercase",marginBottom:8}}>
-          {atLimit ? "Limit Reached · Uncheck One To Add More" : "Add a Location"}
+      {editMode && (
+        <div style={{marginBottom:24}}>
+          <div style={{fontFamily:"var(--mono)",fontSize:".7rem",letterSpacing:".1em",color:atLimit?"var(--muted)":"var(--yellow)",textTransform:"uppercase",marginBottom:8}}>
+            {atLimit ? "Limit Reached · Uncheck One To Add More" : "Add a Location"}
+          </div>
+          <div className="search-box" style={{opacity:atLimit?0.4:1,pointerEvents:atLimit?"none":"auto"}}>
+            <PlacesInput
+              value={query}
+              onChange={setQuery}
+              onPlaceSelect={addLocation}
+              onFocus={()=>{}}
+              onBlur={()=>{}}
+              onEnter={()=>{}}
+              onGPSClick={()=>{}}
+              showDropdown={false}
+            />
+          </div>
+          <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",marginTop:8,letterSpacing:".08em"}}>
+            {list.length} / 10 saved
+          </div>
         </div>
-        <div className="search-box" style={{opacity:atLimit?0.4:1,pointerEvents:atLimit?"none":"auto"}}>
-          <PlacesInput
-            value={query}
-            onChange={setQuery}
-            onPlaceSelect={addLocation}
-            onFocus={()=>{}}
-            onBlur={()=>{}}
-            onEnter={()=>{}}
-            onGPSClick={()=>{}}
-            showDropdown={false}
-          />
-        </div>
-        <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",marginTop:8,letterSpacing:".08em"}}>
-          {list.length} / 10 saved
-        </div>
-      </div>
+      )}
 
       {err && <div className="err" style={{marginBottom:16}}>⚠ {err}</div>}
 
       {loading ? (
         <div style={{textAlign:"center",padding:"20px",color:"var(--muted)",fontFamily:"var(--mono)",fontSize:".75rem",letterSpacing:".1em"}}>LOADING…</div>
       ) : list.length === 0 ? (
-        <div style={{textAlign:"center",padding:"40px 20px",color:"var(--muted)",fontFamily:"var(--mono)",fontSize:".75rem",letterSpacing:".05em",lineHeight:1.6}}>No saved locations yet.<br/>Search above to add one.</div>
+        <div style={{textAlign:"center",padding:"40px 20px",color:"var(--muted)",fontFamily:"var(--mono)",fontSize:".75rem",letterSpacing:".05em",lineHeight:1.6}}>
+          No saved locations yet.<br/>{editMode ? "Search above to add one." : "Tap EDIT to add one."}
+        </div>
       ) : (
         <div>
-          {list.map(item => (
+          {list.map((item, i) => (
             <div key={item.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 0",borderBottom:"1px solid #1f1f1f",opacity:busyId===item.id?0.4:1}}>
-              <input
-                type="checkbox"
-                checked={true}
-                disabled={busyId===item.id}
-                onChange={() => removeLocation(item.id)}
-                aria-label={`Remove ${item.label}`}
-                style={{width:20,height:20,accentColor:"var(--yellow)",cursor:"pointer",flexShrink:0}}
-              />
-              <button
-                onClick={() => onSelectLocation && onSelectLocation(item)}
-                disabled={busyId===item.id}
-                style={{
-                  flex:1,minWidth:0,textAlign:"left",
-                  background:"none",border:"none",padding:0,
-                  cursor:"pointer",color:"inherit",
-                  fontFamily:"inherit",letterSpacing:"inherit",
-                }}
-              >
-                <div style={{fontFamily:"var(--body)",fontSize:"1.05rem",color:"var(--white)",letterSpacing:".02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {item.label}
+              {editMode ? (
+                <input
+                  type="checkbox"
+                  checked={true}
+                  disabled={busyId===item.id}
+                  onChange={() => removeLocation(item.id)}
+                  aria-label={`Remove ${item.label}`}
+                  style={{width:20,height:20,accentColor:"var(--yellow)",cursor:"pointer",flexShrink:0}}
+                />
+              ) : (
+                <div style={{width:28,flexShrink:0,fontFamily:"var(--mono)",fontSize:".8rem",color:"var(--yellow)",letterSpacing:".05em",textAlign:"center"}}>
+                  {i + 1}
                 </div>
-                {(item.neighborhood || item.borough || item.city) && (
-                  <div style={{fontFamily:"var(--mono)",fontSize:".62rem",color:"var(--muted)",letterSpacing:".05em",marginTop:3}}>
-                    {[item.neighborhood, item.borough, item.city].filter(Boolean).join(" · ")}
-                  </div>
-                )}
-              </button>
+              )}
+              {editMode ? (
+                <div style={{flex:1,minWidth:0}}>{renderItemContent(item)}</div>
+              ) : (
+                <button
+                  onClick={() => onSelectLocation && onSelectLocation(item)}
+                  style={{
+                    flex:1,minWidth:0,textAlign:"left",
+                    background:"none",border:"none",padding:0,
+                    cursor:"pointer",color:"inherit",
+                    fontFamily:"inherit",letterSpacing:"inherit",
+                  }}
+                >
+                  {renderItemContent(item)}
+                </button>
+              )}
             </div>
           ))}
         </div>
