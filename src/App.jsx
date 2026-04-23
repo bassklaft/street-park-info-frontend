@@ -267,16 +267,16 @@ function ParkMap({ destLat, destLng, userLat, userLng, label, history = [], isGP
       // Draw heatmap polylines on this map if data is available
       const drawHeatOnParkMap = (data) => {
         if (!data || !data.length) return;
-        const colors = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#555555" };
-        const weights = { red:5, yellow:4, green:3, gray:2 };
+        const colors = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#888888" };
+        const weights = { red:6, yellow:5, green:4, gray:3 };
         data.forEach(s => {
           if (!s.coords || s.coords.length < 2) return;
           const path = s.coords.map(c => Array.isArray(c) ? {lat:c[0],lng:c[1]} : c);
           new window.google.maps.Polyline({
             path, map, geodesic: true,
-            strokeColor: colors[s.urgency] || colors.gray,
-            strokeOpacity: s.urgency === "gray" ? 0.5 : 0.85,
-            strokeWeight: weights[s.urgency] || 2,
+            strokeColor: colors[s.urgency] || "#888888",
+            strokeOpacity: 0.9,
+            strokeWeight: weights[s.urgency] || 3,
             zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
           });
         });
