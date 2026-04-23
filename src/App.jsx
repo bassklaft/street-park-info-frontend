@@ -274,23 +274,28 @@ function ParkMap({ destLat, destLng, userLat, userLng, label, history = [], isGP
 }
 
 // ─── HEAT MAP ────────────────────────────────────────────────────────────────
-// Shows color-coded streets on home screen based on cleaning urgency
 function HeatMap({ userLat, userLng, onStreetClick }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
   const [status, setStatus] = useState("loading");
+  const [streets, setStreets] = useState([]);
 
+  // Fetch heatmap data
   useEffect(() => {
     if (!userLat || !userLng) return;
+    fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setStreets(data); setStatus("ready"); })
+      .catch(() => setStatus("ready"));
+  }, [userLat, userLng]);
+
+  // Init map
+  useEffect(() => {
+    if (!userLat || !userLng || !ref.current) return;
     let alive = true;
 
     const initMap = () => {
       if (!alive || !ref.current || !window.google?.maps) return;
-
-      // Fire heatmap fetch IMMEDIATELY — don't wait for map to render
-      const heatmapPromise = fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
-        .then(r => r.ok ? r.json() : [])
-        .catch(() => []);
 
       const map = new window.google.maps.Map(ref.current, {
         center: { lat: userLat, lng: userLng },
@@ -316,80 +321,20 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
         ],
       });
 
-      // Blue user dot
       new window.google.maps.Marker({
         position: { lat: userLat, lng: userLng },
         map,
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: "#3182CE",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
-        },
+        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor:"#3182CE", fillOpacity:1, strokeColor:"#ffffff", strokeWeight:2 },
         title: "You are here",
       });
 
       mapRef.current = map;
-
-      const drawStreets = (streets) => {
-        if (!alive || !mapRef.current) return;
-        const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#666666" };
-        const weightMap = { red: 6, yellow: 5, green: 4, gray: 3 };
-        let drawn = 0;
-        streets.forEach(s => {
-          if (!s.coords || s.coords.length < 2) return;
-          // Handle both [lat,lng] arrays and {lat,lng} objects
-          const path = s.coords.map(c => Array.isArray(c) ? { lat: c[0], lng: c[1] } : c);
-          try {
-            const line = new window.google.maps.Polyline({
-              path,
-              geodesic: true,
-              strokeColor: colorMap[s.urgency] || colorMap.gray,
-              strokeOpacity: s.urgency === "gray" ? 0.5 : 0.9,
-              strokeWeight: weightMap[s.urgency] || 3,
-              map: mapRef.current,
-              zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
-            });
-            const infoWindow = new window.google.maps.InfoWindow({
-              content: `<div style="font-family:monospace;font-size:12px;color:#000;padding:4px"><b>${s.street}</b><br/>${s.nextClean || "No restrictions"}</div>`,
-            });
-            line.addListener("click", (e) => {
-              infoWindow.setPosition(e.latLng);
-              infoWindow.open(mapRef.current);
-              if (onStreetClick) onStreetClick(s.street);
-            });
-            drawn++;
-          } catch(e) { console.error("Polyline error:", e.message); }
-        });
-        console.log(`Drew ${drawn}/${streets.length} polylines`);
-      };
-
-      // Draw streets as soon as data arrives
-      heatmapPromise.then(streets => {
-        setStatus("ready");
-        if (streets && streets.length > 0) {
-          // If map tiles loaded already, draw now; otherwise wait
-          if (mapRef.current) {
-            drawStreets(streets);
-          } else {
-            google.maps.event.addListenerOnce(map, "tilesloaded", () => drawStreets(streets));
-          }
-        }
-      });
-
-      google.maps.event.addListenerOnce(map, "tilesloaded", () => {
-        setStatus("ready");
-      });
     };
 
     const loadGoogleMaps = () => {
       if (window.google?.maps) { initMap(); return; }
       if (document.querySelector('script[src*="maps.googleapis"]')) {
-        const wait = setInterval(() => {
-          if (window.google?.maps) { clearInterval(wait); initMap(); }
-        }, 100);
+        const wait = setInterval(() => { if (window.google?.maps) { clearInterval(wait); initMap(); } }, 100);
         return;
       }
       const script = document.createElement("script");
@@ -404,6 +349,33 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
     const timer = setTimeout(loadGoogleMaps, 100);
     return () => { alive = false; clearTimeout(timer); };
   }, [userLat, userLng]);
+
+  // Draw polylines whenever streets OR map changes
+  useEffect(() => {
+    if (!mapRef.current || !streets.length || !window.google?.maps) return;
+    const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#666666" };
+    const weightMap = { red: 6, yellow: 5, green: 4, gray: 3 };
+    streets.forEach(s => {
+      if (!s.coords || s.coords.length < 2) return;
+      const path = s.coords.map(c => Array.isArray(c) ? { lat: c[0], lng: c[1] } : c);
+      const line = new window.google.maps.Polyline({
+        path, geodesic: true,
+        strokeColor: colorMap[s.urgency] || colorMap.gray,
+        strokeOpacity: s.urgency === "gray" ? 0.6 : 0.9,
+        strokeWeight: weightMap[s.urgency] || 3,
+        map: mapRef.current,
+        zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
+      });
+      const infoWindow = new window.google.maps.InfoWindow({
+        content: `<div style="font-family:monospace;font-size:12px;color:#000;padding:4px"><b>${s.street}</b><br/>${s.nextClean || "No restrictions"}</div>`,
+      });
+      line.addListener("click", (e) => {
+        infoWindow.setPosition(e.latLng);
+        infoWindow.open(mapRef.current);
+        if (onStreetClick) onStreetClick(s.street);
+      });
+    });
+  }, [streets, mapRef.current]);
 
   return (
     <div style={{position:"relative",marginBottom:16}}>
