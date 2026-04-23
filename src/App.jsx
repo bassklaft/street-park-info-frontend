@@ -286,7 +286,26 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
     if (!userLat || !userLng) return;
     fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
       .then(r => r.ok ? r.json() : [])
-      .then(data => { setStreets(data); setStatus("ready"); })
+      .then(data => {
+        setStreets(data);
+        setStatus("ready");
+        // If map already ready, draw immediately
+        if (mapRef.current && window.google?.maps && data.length > 0) {
+          const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#666666" };
+          const weightMap = { red: 6, yellow: 5, green: 4, gray: 3 };
+          data.forEach(s => {
+            if (!s.coords || s.coords.length < 2) return;
+            const path = s.coords.map(c => Array.isArray(c) ? { lat: c[0], lng: c[1] } : c);
+            new window.google.maps.Polyline({
+              path, geodesic: true,
+              strokeColor: colorMap[s.urgency] || colorMap.gray,
+              strokeOpacity: s.urgency === "gray" ? 0.7 : 0.9,
+              strokeWeight: weightMap[s.urgency] || 3,
+              map: mapRef.current,
+            });
+          });
+        }
+      })
       .catch(() => setStatus("ready"));
   }, [userLat, userLng]);
 
@@ -333,8 +352,8 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
       google.maps.event.addListenerOnce(map, "tilesloaded", () => {
         if (alive) setMapReady(true);
       });
-      // Fallback in case tilesloaded doesn't fire
-      setTimeout(() => { if (alive) setMapReady(true); }, 3000);
+      // Guaranteed fallback — always draw after 2 seconds regardless
+      setTimeout(() => { if (alive && mapRef.current) setMapReady(true); }, 2000);
     };
 
     const loadGoogleMaps = () => {
