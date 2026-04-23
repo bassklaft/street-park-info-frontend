@@ -210,7 +210,7 @@ function ParkMap({ destLat, destLng, userLat, userLng, label, history = [], isGP
       if (!cLat || !cLng) return;
       const map = new window.google.maps.Map(ref.current, {
         center: { lat: cLat, lng: cLng },
-        zoom: userLat ? 13 : 15,
+        zoom: 14,
         mapTypeId: "roadmap",
         zoomControl: true,
         streetViewControl: false,
@@ -246,16 +246,20 @@ function ParkMap({ destLat, destLng, userLat, userLng, label, history = [], isGP
           icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor:"#3182CE", fillOpacity:1, strokeColor:"#fff", strokeWeight:2 },
           title: "You",
         });
-        new window.google.maps.Polyline({
-          path: [{ lat: userLat, lng: userLng }, { lat: destLat, lng: destLng }],
-          strokeColor: "#F7C948", strokeOpacity: 0.7, strokeWeight: 2,
-          icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 4 }, offset: "0", repeat: "20px" }],
-          map,
-        });
-        const bounds = new window.google.maps.LatLngBounds();
-        bounds.extend({ lat: userLat, lng: userLng });
-        bounds.extend({ lat: destLat, lng: destLng });
-        map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
+        // Only draw line and fitBounds if user and dest are meaningfully different
+        const dist = Math.abs(userLat - destLat) + Math.abs(userLng - destLng);
+        if (!isGPS && dist > 0.001) {
+          new window.google.maps.Polyline({
+            path: [{ lat: userLat, lng: userLng }, { lat: destLat, lng: destLng }],
+            strokeColor: "#F7C948", strokeOpacity: 0.7, strokeWeight: 2,
+            icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 4 }, offset: "0", repeat: "20px" }],
+            map,
+          });
+          const bounds = new window.google.maps.LatLngBounds();
+          bounds.extend({ lat: userLat, lng: userLng });
+          bounds.extend({ lat: destLat, lng: destLng });
+          map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
+        }
       }
 
       mapRef.current = map;
@@ -696,10 +700,11 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 .search-dropdown-sub{font-family:var(--mono);font-size:.78rem;color:var(--muted);margin-top:2px}
 /* Google Places autocomplete dark theme */
 .pac-container{background:var(--g2)!important;border:1px solid var(--yellow)!important;border-top:none!important;font-family:var(--mono)!important;z-index:9999!important;box-shadow:none!important}
-.pac-item{background:var(--g2)!important;color:var(--white)!important;border-top:1px solid #222!important;padding:10px 16px!important;cursor:pointer!important;font-size:1.5rem!important}
+.pac-item{background:var(--g2)!important;color:var(--yellow)!important;border-top:1px solid #222!important;padding:10px 16px!important;cursor:pointer!important;font-size:.82rem!important;letter-spacing:.04em!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
 .pac-item:hover,.pac-item-selected{background:#2a2a2a!important}
-.pac-item-query{color:var(--yellow)!important;font-size:.85rem!important}
-.pac-matched{color:var(--yellow)!important}
+.pac-item-query{color:var(--yellow)!important;font-size:.82rem!important;font-weight:600!important}
+.pac-matched{color:var(--white)!important}
+.pac-item-query::after{content:""}.pac-secondary-text{font-size:.82rem!important;color:var(--yellow)!important;opacity:.7}
 .pac-icon{display:none!important}
 .stats-section{width:100%;max-width:540px;margin-top:32px;padding-top:24px;border-top:1px solid #1f1f1f}
 .stats-eyebrow{font-family:var(--mono);font-size:1.5rem;color:var(--yellow);letter-spacing:.1em;margin-bottom:16px}
