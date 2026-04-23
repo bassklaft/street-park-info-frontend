@@ -404,7 +404,22 @@ function CoverageMap({ onCityClick }) {
 
 // ─── HEAT MAP ────────────────────────────────────────────────────────────────
 // Module-level storage — survives React re-renders
-const _heatmap = { map: null, data: [], drawn: false };
+const _heatmap = { map: null, data: [], drawn: false, fetching: false };
+
+function prefetchHeatmap(lat, lng) {
+  if (_heatmap.fetching) return;
+  _heatmap.fetching = true;
+  _heatmap.drawn = false;
+  fetch(`${API}/api/heatmap?lat=${lat}&lng=${lng}`)
+    .then(r => r.ok ? r.json() : [])
+    .then(data => {
+      console.log("Heatmap prefetch:", data.length, "streets");
+      _heatmap.data = data;
+      _heatmap.fetching = false;
+      drawHeatmapStreets();
+    })
+    .catch(() => { _heatmap.fetching = false; });
+}
 
 function drawHeatmapStreets() {
   if (!_heatmap.map || !_heatmap.data.length || _heatmap.drawn) return;
@@ -433,20 +448,13 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
   useEffect(() => {
     if (!userLat || !userLng || !divRef.current) return;
 
-    // Reset module state for new location
-    _heatmap.map = null;
-    _heatmap.data = [];
+    // Reset draw flag for new location
     _heatmap.drawn = false;
 
-    // Start fetching data immediately
-    fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(data => {
-        console.log("Heatmap data arrived:", data.length, "streets");
-        _heatmap.data = data;
-        drawHeatmapStreets(); // draw if map already ready
-      })
-      .catch(e => console.error("Heatmap fetch error:", e));
+    // If no data yet, start fetching
+    if (!_heatmap.data.length && !_heatmap.fetching) {
+      prefetchHeatmap(userLat, userLng);
+    }
 
     // Init map
     const initMap = () => {
@@ -479,10 +487,9 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
       _heatmap.map = map;
       drawHeatmapStreets(); // draw if data already arrived
 
-      // Also try on idle
       window.google.maps.event.addListenerOnce(map, "idle", drawHeatmapStreets);
-      // And after 8 seconds as final fallback
-      setTimeout(drawHeatmapStreets, 8000);
+      setTimeout(drawHeatmapStreets, 5000);
+      setTimeout(drawHeatmapStreets, 15000); // final fallback for slow Overpass
     };
 
     if (window.google?.maps) {
@@ -1126,6 +1133,7 @@ export default function App() {
           const loc = JSON.parse(lastLoc);
           if (loc.lat && loc.lng) {
             setHomeMapCoords({ lat: loc.lat, lng: loc.lng });
+            prefetchHeatmap(loc.lat, loc.lng);
             loadAll(loc);
             return;
           }
@@ -1139,6 +1147,7 @@ export default function App() {
         navigator.geolocation.getCurrentPosition(
           ({ coords: { latitude: lat, longitude: lng } }) => {
             setHomeMapCoords({ lat, lng });
+            prefetchHeatmap(lat, lng); // start fetching immediately
             if (Auth.isPaid()) {
               setCoords({ lat, lng });
               reverseGeocode(lat, lng)
@@ -1156,6 +1165,7 @@ export default function App() {
         ({ coords: { latitude: lat, longitude: lng } }) => {
           setLocationAllowed(true);
           setHomeMapCoords({ lat, lng });
+          prefetchHeatmap(lat, lng); // start fetching immediately
           if (Auth.isPaid()) {
             setCoords({ lat, lng });
             reverseGeocode(lat, lng)
@@ -1312,6 +1322,34 @@ export default function App() {
           </div>
 
           {/* WE'LL MOVE YOUR CAR */}
+          {/* Pricing — only show if not already paid */}
+          {!Auth.isPaid() && (
+            <>
+              <div className="prices" style={{padding:"0 24px",maxWidth:560}}>
+                {[
+                  {key:"monthly",name:"Monthly",price:"$2.99",per:"/month",features:["SMS alerts","1 address","Film & event alerts","ASP alerts"]},
+                  {key:"annual",name:"Annual · Best Value",price:"$19",per:"/year · save 47%",features:["SMS alerts","3 addresses","Film & event alerts","Priority weather"],feat:true},
+                ].map(p => (
+                  <div key={p.key} className={`price ${p.feat ? "feat" : ""}`}>
+                    <div className="p-name">{p.name}</div>
+                    <div className="p-num">{p.price}</div>
+                    <div className="p-per">{p.per}</div>
+                    {p.features.map(f => <div key={f} className="p-feat">{f}</div>)}
+                    <button className="p-cta" disabled={!!checkoutBusy} onClick={() => handleCheckout(p.key)}>{checkoutBusy===p.key?"LOADING…":"START FREE TRIAL →"}</button>
+                  </div>
+                ))}
+              </div>
+
+              {/* SMS Signup */}
+              <div className="signup" style={{maxWidth:536,margin:"0 24px"}}>
+                <div className="signup-title">GET TEXTED BEFORE IT MATTERS</div>
+                <div className="signup-sub">Street cleaning · Film shoots · Snowstorms · Events</div>
+                <div style={{fontFamily:"var(--mono)",fontSize:".75rem",color:"var(--yellow)",marginBottom:12}}>Upgrade to UNLIMITED+SAVE for this feature</div>
+                <button className="p-cta" onClick={() => setShowPaywall(true)} style={{width:"100%"}}>UPGRADE TO UNLIMITED+SAVE →</button>
+              </div>
+            </>
+          )}
+
           <div className="move-car-banner">
             <span className="move-car-badge">COMING SOON</span>
             <div className="move-car-title">🚗 WE'LL MOVE YOUR CAR</div>
@@ -1751,37 +1789,13 @@ export default function App() {
             </>
           )}
 
-          {/* Signup */}
-          <div className="signup">
-            <div className="signup-title">GET TEXTED BEFORE IT MATTERS</div>
-            <div className="signup-sub">Street cleaning · Film shoots · Snowstorms · Events · FREE 30-day trial</div>
-            {!signedUp ? (
-              <>
-                <div className="phone-row">
-                  <input type="tel" placeholder="+1 (917) 555-0100" value={phone} onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key==="Enter" && handleSignup()} />
-                  <button onClick={handleSignup} disabled={signupBusy}>{signupBusy ? "…" : "SIGN ME UP →"}</button>
-                </div>
-                {signupErr && <div style={{fontFamily:"var(--mono)",fontSize:".62rem",color:"var(--red)",marginTop:8}}>⚠ {signupErr}</div>}
-                <div className="signup-fine">$2.99/mo after trial · Cancel anytime · Reply STOP to unsubscribe</div>
-              </>
-            ) : <div className="ok-msg">✅ Done! Check your phone. Upgrade below to keep alerts after 30 days.</div>}
-          </div>
-
-          {/* Pricing */}
-          <div className="prices">
-            {[
-              {key:"monthly",name:"Monthly",price:"$2.99",per:"/month",features:["SMS alerts","1 address","Film & event alerts","ASP alerts"]},
-              {key:"annual",name:"Annual · Best Value",price:"$19",per:"/year · save 47%",features:["SMS alerts","3 addresses","Film & event alerts","Priority weather"],feat:true},
-            ].map(p => (
-              <div key={p.key} className={`price ${p.feat ? "feat" : ""}`}>
-                <div className="p-name">{p.name}</div>
-                <div className="p-num">{p.price}</div>
-                <div className="p-per">{p.per}</div>
-                {p.features.map(f => <div key={f} className="p-feat">{f}</div>)}
-                <button className="p-cta" disabled={!!checkoutBusy} onClick={() => handleCheckout(p.key)}>{checkoutBusy===p.key?"LOADING…":"START FREE TRIAL →"}</button>
-              </div>
-            ))}
-          </div>
+          {/* Upgrade prompt for non-paid users */}
+          {!Auth.isPaid() && (
+            <div style={{padding:"20px",background:"#0a0a0a",borderTop:"1px solid #222",textAlign:"center"}}>
+              <div style={{fontFamily:"var(--mono)",fontSize:".75rem",color:"var(--yellow)",letterSpacing:".1em",marginBottom:8}}>UNLOCK MORE FEATURES</div>
+              <button className="p-cta" style={{maxWidth:280,margin:"0 auto",display:"block"}} onClick={() => setShowPaywall(true)}>UPGRADE TO UNLIMITED+SAVE →</button>
+            </div>
+          )}
 
         </div>
       )}
