@@ -331,33 +331,40 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
 
       mapRef.current = map;
 
-      // When map is ready AND heatmap data is ready — draw both at once
-      google.maps.event.addListenerOnce(map, "tilesloaded", () => {
-        setStatus("ready");
-        heatmapPromise.then(streets => {
-          if (!alive || !mapRef.current) return;
-          const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#444444" };
-          const weightMap = { red: 6, yellow: 5, green: 4, gray: 2 };
-          streets.forEach(s => {
-            if (!s.coords?.length) return;
-            const path = s.coords.map(([lat, lng]) => ({ lat, lng }));
-            const line = new window.google.maps.Polyline({
-              path, geodesic: true,
-              strokeColor: colorMap[s.urgency] || colorMap.gray,
-              strokeOpacity: 0.9,
-              strokeWeight: weightMap[s.urgency] || 3,
-              map: mapRef.current,
-            });
-            const infoWindow = new window.google.maps.InfoWindow({
-              content: `<div style="font-family:monospace;font-size:12px;color:#000;padding:4px"><b>${s.street}</b><br/>${s.nextClean || "No restrictions"}</div>`,
-            });
-            line.addListener("click", (e) => {
-              infoWindow.setPosition(e.latLng);
-              infoWindow.open(mapRef.current);
-              if (onStreetClick) onStreetClick(s.street);
-            });
+      const drawStreets = (streets) => {
+        if (!alive || !mapRef.current) return;
+        const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#444444" };
+        const weightMap = { red: 6, yellow: 5, green: 4, gray: 2 };
+        streets.forEach(s => {
+          if (!s.coords?.length) return;
+          const path = s.coords.map(([lat, lng]) => ({ lat, lng }));
+          const line = new window.google.maps.Polyline({
+            path, geodesic: true,
+            strokeColor: colorMap[s.urgency] || colorMap.gray,
+            strokeOpacity: 0.9,
+            strokeWeight: weightMap[s.urgency] || 3,
+            map: mapRef.current,
+          });
+          const infoWindow = new window.google.maps.InfoWindow({
+            content: `<div style="font-family:monospace;font-size:12px;color:#000;padding:4px"><b>${s.street}</b><br/>${s.nextClean || "No restrictions"}</div>`,
+          });
+          line.addListener("click", (e) => {
+            infoWindow.setPosition(e.latLng);
+            infoWindow.open(mapRef.current);
+            if (onStreetClick) onStreetClick(s.street);
           });
         });
+      };
+
+      // Draw streets as soon as data arrives — don't wait for tilesloaded
+      heatmapPromise.then(streets => {
+        setStatus("ready");
+        drawStreets(streets);
+      });
+
+      // Also hook tilesloaded as backup in case data arrives first
+      google.maps.event.addListenerOnce(map, "tilesloaded", () => {
+        setStatus("ready");
       });
     };
 
@@ -1085,7 +1092,7 @@ export default function App() {
             )}
           </div>
           <button className="home-btn" onClick={resetHome}>
-            H<svg viewBox="0 0 14 16" style={{width:"0.75em",height:"0.85em",verticalAlign:"-0.1em",display:"inline-block"}} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><polyline points="1,8 7,1 13,8"/><polyline points="3,6.5 3,15 11,15 11,6.5"/></svg>ME
+            H<svg viewBox="0 0 10 11" style={{width:"0.6em",height:"0.75em",verticalAlign:"-0.05em",display:"inline-block"}} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="miter" strokeLinecap="square"><polyline points="0.5,6 5,0.8 9.5,6"/><polyline points="2,5 2,10.5 8,10.5 8,5"/></svg>ME
           </button>
           <div style={{width:110,display:"flex",justifyContent:"flex-end"}}>
             {user && (
