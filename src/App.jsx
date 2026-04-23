@@ -205,6 +205,11 @@ function ParkMap({ destLat, destLng, userLat, userLng, label, history = [], isGP
     const cLng = destLng || userLng;
     if (!cLat || !cLng) return;
 
+    // Kick off heatmap fetch immediately — parallel with Google Maps load.
+    const heatLat = userLat || destLat;
+    const heatLng = userLng || destLng;
+    const dataPromise = fetchHeatmap(heatLat, heatLng);
+
     const initMap = () => {
       if (!alive || !ref.current || !window.google?.maps) return;
 
@@ -257,29 +262,23 @@ function ParkMap({ destLat, destLng, userLat, userLng, label, history = [], isGP
         }
       }
 
-      // Fetch and draw heatmap polylines directly - no shared state
-      const lat = userLat || destLat;
-      const lng = userLng || destLng;
-      fetch(`${API}/api/heatmap?lat=${lat}&lng=${lng}`)
-        .then(r => r.ok ? r.json() : [])
-        .then(data => {
-          if (!alive || !data.length) return;
-          console.log("Drawing", data.length, "polylines on ParkMap");
-          const colors = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#AAAAAA" };
-          const weights = { red:6, yellow:5, green:4, gray:4 };
-          data.forEach(s => {
-            if (!s.coords || s.coords.length < 2) return;
-            const path = s.coords.map(c => Array.isArray(c) ? {lat:c[0],lng:c[1]} : c);
-            new window.google.maps.Polyline({
-              path, map, geodesic: true,
-              strokeColor: colors[s.urgency] || "#AAAAAA",
-              strokeOpacity: 1.0,
-              strokeWeight: weights[s.urgency] || 4,
-              zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
-            });
+      // Draw polylines as soon as data promise resolves (may already be done).
+      dataPromise.then(data => {
+        if (!alive || !data || !data.length) return;
+        const colors = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#AAAAAA" };
+        const weights = { red:6, yellow:5, green:4, gray:4 };
+        data.forEach(s => {
+          if (!s.coords || s.coords.length < 2) return;
+          const path = s.coords.map(c => Array.isArray(c) ? {lat:c[0],lng:c[1]} : c);
+          new window.google.maps.Polyline({
+            path, map, geodesic: true,
+            strokeColor: colors[s.urgency] || "#AAAAAA",
+            strokeOpacity: 1.0,
+            strokeWeight: weights[s.urgency] || 4,
+            zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
           });
-        })
-        .catch(e => console.error("Heatmap fetch error:", e));
+        });
+      });
     };
 
     if (window.google?.maps) { initMap(); return; }
@@ -519,50 +518,22 @@ function CoverageMap({ onCityClick }) {
 }
 
 // ─── HEAT MAP ────────────────────────────────────────────────────────────────
-// Module-level storage — survives React re-renders
-const _heatmap = { map: null, data: [], drawn: false, fetching: false };
-
-function prefetchHeatmap(lat, lng) {
-  if (_heatmap.fetching) return;
-  _heatmap.fetching = true;
-  _heatmap.drawn = false;
-  _heatmap.data = [];
-  fetch(`${API}/api/heatmap?lat=${lat}&lng=${lng}`)
+// Per-tab promise cache so the /api/heatmap fetch for a given lat/lng
+// happens at most once and can start as soon as coords are known — usually
+// at handleSearch/loadAll time, well before the HeatMap component mounts.
+// By the time Google Maps finishes loading, the promise is typically already
+// resolved and polylines can be drawn in the same frame as the map.
+const _heatmapPromises = new Map();
+function fetchHeatmap(lat, lng) {
+  const key = `${(+lat).toFixed(4)},${(+lng).toFixed(4)}`;
+  let p = _heatmapPromises.get(key);
+  if (p) return p;
+  p = fetch(`${API}/api/heatmap?lat=${lat}&lng=${lng}`)
     .then(r => r.ok ? r.json() : [])
-    .then(data => {
-      console.log("Heatmap prefetch:", data.length, "streets");
-      _heatmap.data = data;
-      _heatmap.fetching = false;
-      _heatmap.drawn = false;
-      drawHeatmapStreets();
-    })
-    .catch(() => { _heatmap.fetching = false; });
-}
-
-function drawHeatmapStreets() {
-  if (!_heatmap.data.length) return;
-  if (!_heatmap.map || !window.google?.maps) {
-    // Retry every 500ms until map is ready
-    setTimeout(drawHeatmapStreets, 500);
-    return;
-  }
-  if (_heatmap.drawn) return;
-  _heatmap.drawn = true;
-  const colors = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#666666" };
-  const weights = { red:6, yellow:5, green:4, gray:3 };
-  let n = 0;
-  _heatmap.data.forEach(s => {
-    if (!s.coords || s.coords.length < 2) return;
-    const path = s.coords.map(c => Array.isArray(c) ? {lat:c[0],lng:c[1]} : c);
-    new window.google.maps.Polyline({
-      path, map: _heatmap.map, geodesic: true,
-      strokeColor: colors[s.urgency] || colors.gray,
-      strokeOpacity: s.urgency === "gray" ? 0.6 : 0.9,
-      strokeWeight: weights[s.urgency] || 3,
-    });
-    n++;
-  });
-  console.log("Heatmap drew", n, "polylines");
+    .then(d => Array.isArray(d) ? d : [])
+    .catch(e => { console.error("Heatmap fetch error:", e); _heatmapPromises.delete(key); return []; });
+  _heatmapPromises.set(key, p);
+  return p;
 }
 
 function HeatMap({ userLat, userLng, onStreetClick }) {
@@ -572,6 +543,32 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
     if (!userLat || !userLng || !divRef.current) return;
     let alive = true;
     const polylines = [];
+
+    // Kick off the heatmap fetch immediately — in parallel with Google Maps
+    // loading and initialization. If loadAll already started this fetch, we
+    // share the in-flight promise via the module-level cache.
+    const dataPromise = fetchHeatmap(userLat, userLng);
+
+    const drawPolylines = (map, data) => {
+      if (!alive || !data || !data.length) return;
+      const colors = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#AAAAAA" };
+      const weights = { red:6, yellow:5, green:4, gray:4 };
+      data.forEach(s => {
+        if (!s.coords || s.coords.length < 2) return;
+        const path = s.coords.map(c => Array.isArray(c) ? {lat:c[0],lng:c[1]} : c);
+        const pl = new window.google.maps.Polyline({
+          path, map, geodesic: true,
+          strokeColor: colors[s.urgency] || colors.gray,
+          strokeOpacity: 1.0,
+          strokeWeight: weights[s.urgency] || 4,
+          zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
+        });
+        if (onStreetClick && s.street) {
+          pl.addListener("click", () => onStreetClick(s.street));
+        }
+        polylines.push(pl);
+      });
+    };
 
     const initMap = () => {
       if (!alive || !divRef.current || !window.google?.maps) return;
@@ -600,30 +597,7 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
         icon: { path: window.google.maps.SymbolPath.CIRCLE, scale:8, fillColor:"#3182CE", fillOpacity:1, strokeColor:"#fff", strokeWeight:2 },
       });
 
-      fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
-        .then(r => r.ok ? r.json() : [])
-        .then(data => {
-          if (!alive || !Array.isArray(data) || !data.length) return;
-          console.log("HeatMap drawing", data.length, "polylines");
-          const colors = { red:"#E53E3E", yellow:"#F7C948", green:"#38A169", gray:"#AAAAAA" };
-          const weights = { red:6, yellow:5, green:4, gray:4 };
-          data.forEach(s => {
-            if (!s.coords || s.coords.length < 2) return;
-            const path = s.coords.map(c => Array.isArray(c) ? {lat:c[0],lng:c[1]} : c);
-            const pl = new window.google.maps.Polyline({
-              path, map, geodesic: true,
-              strokeColor: colors[s.urgency] || colors.gray,
-              strokeOpacity: 1.0,
-              strokeWeight: weights[s.urgency] || 4,
-              zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
-            });
-            if (onStreetClick && s.street) {
-              pl.addListener("click", () => onStreetClick(s.street));
-            }
-            polylines.push(pl);
-          });
-        })
-        .catch(e => console.error("HeatMap fetch error:", e));
+      dataPromise.then(data => drawPolylines(map, data));
     };
 
     if (window.google?.maps) {
@@ -1140,6 +1114,9 @@ export default function App() {
     setCoords({ lat: loc.lat, lng: loc.lng });
     setSelectedEstab(null);
     setPhase("loading");
+    // Start heatmap fetch as early as possible so polylines are usually
+    // ready by the time Google Maps finishes initializing.
+    if (loc.lat && loc.lng) fetchHeatmap(loc.lat, loc.lng);
     const saved = Storage.saveSearch(loc);
     if (saved) setSavedSearches(saved);
     // Save last search for paid users auto-reload
@@ -1329,7 +1306,7 @@ export default function App() {
           const loc = JSON.parse(lastLoc);
           if (loc.lat && loc.lng) {
             setHomeMapCoords({ lat: loc.lat, lng: loc.lng });
-            prefetchHeatmap(loc.lat, loc.lng);
+            fetchHeatmap(loc.lat, loc.lng);
             loadAll(loc);
             return;
           }
@@ -1343,7 +1320,7 @@ export default function App() {
         navigator.geolocation.getCurrentPosition(
           ({ coords: { latitude: lat, longitude: lng } }) => {
             setHomeMapCoords({ lat, lng });
-            prefetchHeatmap(lat, lng); // prefetch heatmap data but don't navigate
+            fetchHeatmap(lat, lng); // prefetch heatmap data but don't navigate
           },
           () => {}
         );
@@ -1355,7 +1332,7 @@ export default function App() {
         ({ coords: { latitude: lat, longitude: lng } }) => {
           setLocationAllowed(true);
           setHomeMapCoords({ lat, lng });
-          prefetchHeatmap(lat, lng);
+          fetchHeatmap(lat, lng);
         },
         () => { setLocationAllowed(false); }
       );
