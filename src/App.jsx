@@ -433,7 +433,7 @@ html,body{background:var(--black);color:var(--white);font-family:var(--body);min
 .app-tagline{font-family:var(--body);font-size:1.5rem;color:var(--white);letter-spacing:.06em;margin-bottom:28px}
 .search-section{width:100%;max-width:560px;padding:0 20px;margin:0 auto}
 .gate-note{font-family:var(--mono);font-size:.82rem;letter-spacing:.08em;text-align:center;margin-bottom:10px}
-.search-box{display:flex;border:2px solid var(--yellow);background:var(--g2);border-radius:4px;overflow:hidden}
+.search-box{display:flex;border:2px solid var(--yellow);background:var(--g2);border-radius:4px;overflow:visible;position:relative}
 .search-box input{flex:1;background:none;border:none;outline:none;color:var(--white);font-family:var(--mono);font-size:1.5rem;padding:14px 18px;letter-spacing:.04em}
 .search-box input::placeholder{color:#444}
 .search-box button{background:var(--yellow);border:none;cursor:pointer;font-family:var(--display);font-size:1.5rem;letter-spacing:.1em;padding:0 22px;transition:background .15s;white-space:nowrap}
@@ -1697,3 +1697,4 @@ export default function App() {
     </>
   );
 }
+
