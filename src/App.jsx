@@ -662,6 +662,7 @@ const CITY_STATS = [
   { city:"Dallas", tickets:"1,500,000+", avg:"$40", total:"$60M+" },
   { city:"Sacramento", tickets:"500,000+", avg:"$58", total:"$29M+" },
   { city:"New Jersey", tickets:"2,100,000+", avg:"$54", total:"$113M+" },
+  { city:"San Diego", tickets:"900,000+", avg:"$63", total:"$57M+" },
 ];
 
 function DraggableCarousel() {
@@ -1056,22 +1057,14 @@ export default function App() {
         transition:"transform .25s ease",
       }}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px 0"}}>
-          <div style={{width:110,display:"flex",justifyContent:"flex-start"}}>
-            {user && (
-              <span className={`tier-badge tier-${user.tier}`} style={{fontSize:".65rem",padding:"3px 8px",whiteSpace:"nowrap"}}>
-                Tier: {user.tier === "unlimited" ? "UNLIMITED+SAVE" : user.tier === "premium" ? "PREMIUM" : user.tier === "basic" ? "BASIC" : "FREE"}
-              </span>
-            )}
-          </div>
-          <button className="home-btn" onClick={resetHome}>⌂ HOME</button>
-          <div style={{width:110,display:"flex",justifyContent:"flex-end",position:"relative"}} ref={menuRef}>
-            <button 
-              className="user-pill" 
-              onClick={() => setShowUserMenu(v => !v)}
-              style={{whiteSpace:"nowrap",fontSize:"1rem",letterSpacing:".05em",padding:"4px 12px"}}
-            >☰</button>
-            {showUserMenu && (
-              <div style={{position:"absolute",top:"100%",right:0,marginTop:6,background:"var(--g2)",border:"1px solid var(--yellow)",minWidth:160,zIndex:300}}>
+        <div style={{width:110,display:"flex",justifyContent:"flex-start",position:"relative"}} ref={menuRef}>
+          <button 
+            className="user-pill" 
+            onClick={() => setShowUserMenu(v => !v)}
+            style={{whiteSpace:"nowrap",fontSize:"1rem",letterSpacing:".05em",padding:"4px 12px"}}
+          >☰</button>
+          {showUserMenu && (
+              <div style={{position:"absolute",top:"100%",left:0,marginTop:6,background:"var(--g2)",border:"1px solid var(--yellow)",minWidth:160,zIndex:300}}>
                 {!user && (
                   <div className="menu-item" onClick={() => { setShowUserMenu(false); setAuthMode("signup"); setShowAuthModal(true); }}>Sign Up</div>
                 )}
@@ -1089,6 +1082,14 @@ export default function App() {
                   <div className="menu-item" style={{color:"var(--red)"}} onClick={() => { setShowUserMenu(false); handleLogout(); }}>Sign Out</div>
                 )}
               </div>
+            )}
+          </div>
+          <button className="home-btn" onClick={resetHome}>⌂ HOME</button>
+          <div style={{width:110,display:"flex",justifyContent:"flex-end"}}>
+            {user && (
+              <span className={`tier-badge tier-${user.tier}`} style={{fontSize:".65rem",padding:"3px 8px",whiteSpace:"nowrap"}}>
+                Tier: {user.tier === "unlimited" ? "UNLIMITED+SAVE" : user.tier === "premium" ? "PREMIUM" : user.tier === "basic" ? "BASIC" : "FREE"}
+              </span>
             )}
           </div>
         </div>
