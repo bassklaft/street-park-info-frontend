@@ -2109,7 +2109,7 @@ export default function App() {
 
       {/* AUTH MODAL */}
       {showAuthModal && (
-        <div className="auth-overlay" onClick={() => setShowAuthModal(false)}>
+        <div onClick={() => setShowAuthModal(false)} style={{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",background:"rgba(0,0,0,.85)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px",boxSizing:"border-box"}}>
           <div className="auth-modal" onClick={e => e.stopPropagation()}>
             <div className="auth-title">{authMode === "signup" ? "CREATE ACCOUNT" : "WELCOME BACK"}</div>
             <div className="auth-sub">
@@ -2140,7 +2140,7 @@ export default function App() {
 
       {/* PAYWALL */}
       {showPaywall && (
-        <div className="paywall-overlay" onClick={() => setShowPaywall(false)}>
+        <div onClick={() => setShowPaywall(false)} style={{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",background:"rgba(0,0,0,.85)",zIndex:99999,display:"flex",alignItems:"flex-end",justifyContent:"center",boxSizing:"border-box"}}>
           <div className="paywall-sheet" onClick={e => e.stopPropagation()} style={{maxHeight:"90vh",overflowY:"auto",width:"100%",maxWidth:560,background:"#0e0e0e",position:"relative"}}>
             <button style={{position:"absolute",top:12,right:16,background:"none",border:"none",color:"var(--muted)",fontSize:"1.2rem",cursor:"pointer"}} onClick={() => setShowPaywall(false)}>✕</button>
             <div className="paywall-title" style={{marginBottom:4}}>CHOOSE YOUR PLAN</div>
