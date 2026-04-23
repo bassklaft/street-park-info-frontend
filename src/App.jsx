@@ -1437,6 +1437,11 @@ export default function App() {
                   <button onClick={handleSearch}>GO</button>
                 </div>
               </div>
+              {!Auth.isLoggedIn() && !Auth.isPaid() && remaining > 0 && (
+                <div className="gate-note" style={{color:"var(--yellow)", marginTop:10, marginBottom:0}}>
+                  {remaining} free search{remaining === 1 ? "" : "es"} remaining · Sign up for 8
+                </div>
+              )}
               {err && <div className="err">⚠ {err}</div>}
             </div>
           </div>
