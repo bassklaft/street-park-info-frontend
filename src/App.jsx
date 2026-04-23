@@ -446,7 +446,7 @@ function CoverageMap({ onCityClick }) {
         })
         .catch(() => console.log("GeoJSON failed to load"));
 
-      // Add neighborhood markers with labels
+      // Add neighborhood markers — name shows on click only
       COVERED_CITIES.forEach(city => {
         const marker = new window.google.maps.Marker({
           position: { lat: city.lat, lng: city.lng },
@@ -458,13 +458,6 @@ function CoverageMap({ onCityClick }) {
             fillOpacity: 1,
             strokeColor: "#080808",
             strokeWeight: 1,
-          },
-          label: {
-            text: city.name,
-            color: "#F7C948",
-            fontFamily: "monospace",
-            fontSize: "8px",
-            fontWeight: "500",
           },
           title: city.name,
         });
