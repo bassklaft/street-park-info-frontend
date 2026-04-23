@@ -402,38 +402,45 @@ function CoverageMap({ onCityClick }) {
 function HeatMap({ userLat, userLng, onStreetClick }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
-  const heatmapDataRef = useRef(Promise.resolve([]));
+  const streetsRef = useRef([]);
   const [status, setStatus] = useState("loading");
   const [streets, setStreets] = useState([]);
   const [mapReady, setMapReady] = useState(false);
 
-  // Fetch heatmap data and store promise in ref
+  const drawPolylines = (map, data) => {
+    if (!map || !data.length || !window.google?.maps) return;
+    const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#666666" };
+    const weightMap = { red: 6, yellow: 5, green: 4, gray: 3 };
+    let count = 0;
+    data.forEach(s => {
+      if (!s.coords || s.coords.length < 2) return;
+      const path = s.coords.map(c => Array.isArray(c) ? { lat: c[0], lng: c[1] } : c);
+      new window.google.maps.Polyline({
+        path, geodesic: true,
+        strokeColor: colorMap[s.urgency] || colorMap.gray,
+        strokeOpacity: s.urgency === "gray" ? 0.7 : 0.9,
+        strokeWeight: weightMap[s.urgency] || 3,
+        map,
+      });
+      count++;
+    });
+    console.log(`Drew ${count} polylines`);
+  };
+
+  // Fetch heatmap data
   useEffect(() => {
     if (!userLat || !userLng) return;
-    const promise = fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
+    setStatus("loading");
+    fetch(`${API}/api/heatmap?lat=${userLat}&lng=${userLng}`)
       .then(r => r.ok ? r.json() : [])
-      .catch(() => []);
-    heatmapDataRef.current = promise;
-    promise.then(data => {
-      setStreets(data);
-      setStatus("ready");
-      // If map already ready, draw immediately
-      if (mapRef.current && window.google?.maps && data.length > 0) {
-        const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#666666" };
-        const weightMap = { red: 6, yellow: 5, green: 4, gray: 3 };
-        data.forEach(s => {
-          if (!s.coords || s.coords.length < 2) return;
-          const path = s.coords.map(c => Array.isArray(c) ? { lat: c[0], lng: c[1] } : c);
-          new window.google.maps.Polyline({
-            path, geodesic: true,
-            strokeColor: colorMap[s.urgency] || colorMap.gray,
-            strokeOpacity: s.urgency === "gray" ? 0.7 : 0.9,
-            strokeWeight: weightMap[s.urgency] || 3,
-            map: mapRef.current,
-          });
-        });
-      }
-    });
+      .then(data => {
+        streetsRef.current = data;
+        setStreets(data);
+        setStatus("ready");
+        // Draw immediately if map already ready
+        if (mapRef.current) drawPolylines(mapRef.current, data);
+      })
+      .catch(() => setStatus("ready"));
   }, [userLat, userLng]);
 
   // Init map
@@ -477,33 +484,18 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
 
       mapRef.current = map;
 
-      // Draw polylines on idle — fires after tiles load, most reliable
-      let drawn = false;
-      const drawOnIdle = () => {
-        if (drawn) return;
-        heatmapDataRef.current.then(streets => {
-          if (!streets.length || !mapRef.current) return;
-          drawn = true;
-          const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#666666" };
-          const weightMap = { red: 6, yellow: 5, green: 4, gray: 3 };
-          streets.forEach(s => {
-            if (!s.coords || s.coords.length < 2) return;
-            const path = s.coords.map(c => Array.isArray(c) ? { lat: c[0], lng: c[1] } : c);
-            new window.google.maps.Polyline({
-              path, geodesic: true,
-              strokeColor: colorMap[s.urgency] || colorMap.gray,
-              strokeOpacity: s.urgency === "gray" ? 0.7 : 0.9,
-              strokeWeight: weightMap[s.urgency] || 3,
-              map: mapRef.current,
-            });
-          });
-          setStatus("ready");
-          setStreets(streets);
-        });
-      };
-      google.maps.event.addListenerOnce(map, "idle", drawOnIdle);
-      // Also try after 5 seconds in case idle already fired
-      setTimeout(drawOnIdle, 5000);
+      // Draw streets if data already arrived
+      if (streetsRef.current.length > 0) {
+        drawPolylines(map, streetsRef.current);
+      }
+
+      // Also draw on idle in case data arrives after map
+      google.maps.event.addListenerOnce(map, "idle", () => {
+        if (alive) {
+          setMapReady(true);
+          if (streetsRef.current.length > 0) drawPolylines(map, streetsRef.current);
+        }
+      });
     };
 
     const loadGoogleMaps = () => {
@@ -524,33 +516,6 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
     const timer = setTimeout(loadGoogleMaps, 100);
     return () => { alive = false; clearTimeout(timer); };
   }, [userLat, userLng]);
-
-  // Draw polylines — runs when BOTH map is ready AND streets are loaded
-  useEffect(() => {
-    if (!mapReady || !streets.length || !mapRef.current || !window.google?.maps) return;
-    const colorMap = { red: "#E53E3E", yellow: "#F7C948", green: "#38A169", gray: "#666666" };
-    const weightMap = { red: 6, yellow: 5, green: 4, gray: 3 };
-    streets.forEach(s => {
-      if (!s.coords || s.coords.length < 2) return;
-      const path = s.coords.map(c => Array.isArray(c) ? { lat: c[0], lng: c[1] } : c);
-      const line = new window.google.maps.Polyline({
-        path, geodesic: true,
-        strokeColor: colorMap[s.urgency] || colorMap.gray,
-        strokeOpacity: s.urgency === "gray" ? 0.7 : 0.9,
-        strokeWeight: weightMap[s.urgency] || 3,
-        map: mapRef.current,
-        zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
-      });
-      const infoWindow = new window.google.maps.InfoWindow({
-        content: `<div style="font-family:monospace;font-size:12px;color:#000;padding:4px"><b>${s.street}</b><br/>${s.nextClean || "No restrictions"}</div>`,
-      });
-      line.addListener("click", (e) => {
-        infoWindow.setPosition(e.latLng);
-        infoWindow.open(mapRef.current);
-        if (onStreetClick) onStreetClick(s.street);
-      });
-    });
-  }, [mapReady, streets]);
 
   return (
     <div style={{position:"relative",marginBottom:16}}>
