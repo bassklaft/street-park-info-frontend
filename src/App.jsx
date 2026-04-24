@@ -557,24 +557,88 @@ function CoverageMap({ onCityClick }) {
         ],
       });
 
+      // Neighborhood boundary sources. Each city's geojson is lazy-fetched
+      // the first time its bbox intersects the visible viewport at zoom >=
+      // NEIGHBORHOOD_THRESHOLD. Features are tagged with _spnKind so the
+      // shared setStyle can distinguish state polygons from neighborhood
+      // polygons.
+      const NEIGHBORHOOD_SOURCES = [
+        { key: "nyc",     url: "https://raw.githubusercontent.com/veltman/snd3/master/data/nyc-neighborhoods.geo.json",
+          bbox: { minLat:40.49, maxLat:40.92, minLng:-74.26, maxLng:-73.69 } },
+        { key: "chicago", url: "https://raw.githubusercontent.com/blackmad/neighborhoods/master/chicago.geojson",
+          bbox: { minLat:41.60, maxLat:42.10, minLng:-87.95, maxLng:-87.52 } },
+        { key: "la",      url: "https://raw.githubusercontent.com/blackmad/neighborhoods/master/los-angeles.geojson",
+          bbox: { minLat:33.70, maxLat:34.35, minLng:-118.65,maxLng:-118.15 } },
+      ];
+      const NEIGHBORHOOD_THRESHOLD = 11;
+      const loadedCities = new Set();
+      const bboxHit = (bounds, cbx) => {
+        if (!bounds) return false;
+        const ne = bounds.getNorthEast(), sw = bounds.getSouthWest();
+        return !(sw.lat() > cbx.maxLat || ne.lat() < cbx.minLat ||
+                 sw.lng() > cbx.maxLng || ne.lng() < cbx.minLng);
+      };
+
+      // Shared styler: states keep the original covered/uncovered look;
+      // neighborhood polygons get a thin yellow outline with no fill, and
+      // are hidden entirely below the zoom threshold.
+      const applyStyle = () => {
+        const z = map.getZoom() || 0;
+        map.data.setStyle(feature => {
+          if (feature.getProperty("_spnKind") === "neighborhood") {
+            if (z < NEIGHBORHOOD_THRESHOLD) return { visible: false };
+            return {
+              strokeColor: "#F7C948",
+              strokeOpacity: 0.45,
+              strokeWeight: 1,
+              fillOpacity: 0,
+              clickable: false,
+              zIndex: 1,
+            };
+          }
+          const name = feature.getProperty("name");
+          const isCovered = COVERED_STATES.includes(name);
+          return {
+            fillColor: isCovered ? "#ffffff" : "#111111",
+            fillOpacity: isCovered ? 0.12 : 0,
+            strokeColor: isCovered ? "#ffffff" : "#333333",
+            strokeWeight: isCovered ? 1 : 0.5,
+            strokeOpacity: isCovered ? 0.5 : 0.3,
+          };
+        });
+      };
+
       // Load GeoJSON state boundaries
       fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
         .then(r => r.json())
         .then(geojson => {
           map.data.addGeoJson(geojson);
-          map.data.setStyle(feature => {
-            const name = feature.getProperty("name");
-            const isCovered = COVERED_STATES.includes(name);
-            return {
-              fillColor: isCovered ? "#ffffff" : "#111111",
-              fillOpacity: isCovered ? 0.12 : 0,
-              strokeColor: isCovered ? "#ffffff" : "#333333",
-              strokeWeight: isCovered ? 1 : 0.5,
-              strokeOpacity: isCovered ? 0.5 : 0.3,
-            };
-          });
+          applyStyle();
         })
         .catch(() => console.log("GeoJSON failed to load"));
+
+      const maybeLoadNeighborhoods = () => {
+        const z = map.getZoom() || 0;
+        if (z < NEIGHBORHOOD_THRESHOLD) return;
+        const bounds = map.getBounds();
+        for (const source of NEIGHBORHOOD_SOURCES) {
+          if (loadedCities.has(source.key)) continue;
+          if (!bboxHit(bounds, source.bbox)) continue;
+          loadedCities.add(source.key);
+          fetch(source.url)
+            .then(r => r.ok ? r.json() : null)
+            .then(geo => {
+              if (!geo?.features) return;
+              const added = map.data.addGeoJson(geo);
+              added.forEach(f => f.setProperty("_spnKind", "neighborhood"));
+              applyStyle();
+            })
+            .catch(() => loadedCities.delete(source.key));
+        }
+      };
+
+      map.addListener("zoom_changed", () => { applyStyle(); maybeLoadNeighborhoods(); });
+      map.addListener("idle", maybeLoadNeighborhoods);
 
       // Add neighborhood markers — tapping the marker opens the InfoWindow;
       // the "Tap to search" button inside fires onCityClick. Two-step action
