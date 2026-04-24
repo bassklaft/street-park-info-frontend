@@ -267,8 +267,11 @@ async function getFilms(street, borough, lat, lng) {
     return r.ok ? r.json() : [];
   } catch { return []; }
 }
-async function getEvents(borough) {
-  try { const r = await fetch(`${API}/api/events?borough=${encodeURIComponent(borough || "")}`); return r.ok ? r.json() : []; } catch { return []; }
+async function getEvents(borough, lat, lng) {
+  const p = new URLSearchParams();
+  if (borough) p.set("borough", borough);
+  if (lat && lng) { p.set("lat", lat); p.set("lng", lng); }
+  try { const r = await fetch(`${API}/api/events?${p}`); return r.ok ? r.json() : []; } catch { return []; }
 }
 async function getWeather(lat, lng) {
   try { const r = await fetch(`${API}/api/weather?lat=${lat}&lng=${lng}`); return r.ok ? r.json() : null; } catch { return null; }
@@ -1405,7 +1408,7 @@ export default function App() {
 
     const [cR, fR, evR, wxR, aR, rR] = await Promise.allSettled([
       cleaningCall,
-      getFilms(loc.street, loc.borough, loc.lat, loc.lng), getEvents(loc.borough),
+      getFilms(loc.street, loc.borough, loc.lat, loc.lng), getEvents(loc.borough, loc.lat, loc.lng),
       getWeather(loc.lat, loc.lng), getASP(),
       getRestrictions(streets, loc.borough),
     ]);
