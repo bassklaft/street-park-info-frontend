@@ -3116,14 +3116,17 @@ export default function App() {
                   .flatMap(([street, arr]) => (arr || []).map(r => ({ ...r, street })));
                 if (allRestrictions.length === 0) return null;
                 const TYPE_META = {
-                  tow_away:          { icon: "🚨", label: "Tow-Away Zone", color: "var(--red)" },
-                  fire_zone:         { icon: "🚒", label: "Fire Zone",     color: "var(--red)" },
-                  no_parking_always: { icon: "⛔", label: "No Parking Anytime", color: "var(--red)" },
-                  bus_stop:          { icon: "🚌", label: "Bus Stop",      color: "var(--orange)" },
-                  no_parking_hours:  { icon: "⏰", label: "No Parking (hours)", color: "var(--orange)" },
-                  time_limit:        { icon: "⏱", label: "Time-Limited",   color: "var(--yellow)" },
-                  loading_zone:      { icon: "🚚", label: "Loading Zone",  color: "var(--yellow)" },
-                  permit_only:       { icon: "🪪", label: "Permit Only",   color: "var(--yellow)" },
+                  tow_away:             { icon: "🚨", label: "Tow-Away Zone", color: "var(--red)" },
+                  fire_zone:            { icon: "🚒", label: "Fire Zone",     color: "var(--red)" },
+                  no_parking_always:    { icon: "⛔", label: "No Parking Anytime", color: "var(--red)" },
+                  overnight_no_parking: { icon: "🌙", label: "Overnight No Parking", color: "var(--red)" },
+                  bus_stop:             { icon: "🚌", label: "Bus Stop",      color: "var(--orange)" },
+                  no_parking_hours:     { icon: "⏰", label: "No Parking (hours)", color: "var(--orange)" },
+                  school_zone:          { icon: "🏫", label: "School Zone",   color: "var(--orange)" },
+                  time_limit:           { icon: "⏱", label: "Time-Limited",   color: "var(--yellow)" },
+                  loading_zone:         { icon: "🚚", label: "Loading Zone",  color: "var(--yellow)" },
+                  permit_only:          { icon: "🪪", label: "Permit Only",   color: "var(--yellow)" },
+                  authorized_only:      { icon: "🪪", label: "Authorized Vehicles Only", color: "var(--yellow)" },
                 };
                 return (
                   <div className="sec">
