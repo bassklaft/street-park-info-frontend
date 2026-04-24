@@ -2787,19 +2787,48 @@ export default function App() {
                   ))}
               </div>
 
-              {/* Events */}
-              <div className="sec">
-                <div className="sec-hd">📅 Public Events {events.length > 0 && <span className="badge">{events.length}</span>}</div>
-                {events.length === 0 ? <div className="empty">No permitted public events in your borough this week.</div>
-                  : events.slice(0,5).map((ev, i) => (
-                    <div key={i} className="ev-card">
-                      <div className="ev-type">📅 {ev.type}</div>
-                      <div className="ev-name">{ev.name}</div>
-                      <div className="ev-meta">{ev.start && `Starts: ${ev.start}`}{ev.location && ` · ${ev.location}`}{ev.borough && ` · ${ev.borough}`}</div>
-                      {ev.parkingImpacted && <span className="ev-impact">⚠ Parking may be impacted</span>}
+              {/* Events — every source (NYC special events, NYC construction,
+                  Chicago Park District, ESPN sports) carries a `category`
+                  field. We render per-category icons + headline so users
+                  scan "what would force me to move" at a glance. */}
+              {(() => {
+                const CAT = {
+                  parade:        { icon: "🚩", label: "Parade"       },
+                  demonstration: { icon: "📣", label: "Demonstration"},
+                  race:          { icon: "🏃", label: "Race / Run"   },
+                  festival:      { icon: "🎉", label: "Festival / Fair"},
+                  construction:  { icon: "🚧", label: "Construction" },
+                  sports:        { icon: "🏟", label: "Sports"        },
+                  street_event:  { icon: "🚦", label: "Street Event" },
+                  other:         { icon: "📅", label: "Public Event" },
+                };
+                return (
+                  <div className="sec">
+                    <div className="sec-hd">📅 Public Events {events.length > 0 && <span className="badge">{events.length}</span>}</div>
+                    <div className="sec-note" style={{fontFamily:"var(--mono)",fontSize:".62rem",color:"var(--muted)",marginBottom:10,letterSpacing:".03em",lineHeight:1.5}}>
+                      Parades · races · festivals · demonstrations · construction closures · major sports at nearby venues — anything permitted that could force you to move your car.
                     </div>
-                  ))}
-              </div>
+                    {events.length === 0
+                      ? <div className="empty">No permitted public events near you this week.</div>
+                      : events.slice(0, 8).map((ev, i) => {
+                          const meta = CAT[ev.category] || CAT.other;
+                          return (
+                            <div key={i} className="ev-card">
+                              <div className="ev-type">{meta.icon} {meta.label}{ev.type && ev.type !== meta.label ? ` · ${ev.type}` : ""}</div>
+                              <div className="ev-name">{ev.name}</div>
+                              <div className="ev-meta">
+                                {ev.start && `${ev.start === ev.end || !ev.end ? ev.start : `${ev.start} → ${ev.end}`}`}
+                                {ev.location && ` · ${ev.location}`}
+                                {ev.borough && ` · ${ev.borough}`}
+                                {ev.distance && ` · ${ev.distance} away`}
+                              </div>
+                              {ev.parkingImpacted && <span className="ev-impact">⚠ Parking may be impacted</span>}
+                            </div>
+                          );
+                        })}
+                  </div>
+                );
+              })()}
 
               {/* Disclaimer — always visible above the weather section */}
               <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",lineHeight:1.5,letterSpacing:".02em",padding:"12px 4px",margin:"8px 0",borderTop:"1px solid #1a1a1a",borderBottom:"1px solid #1a1a1a"}}>
