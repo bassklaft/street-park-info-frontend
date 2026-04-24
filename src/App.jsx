@@ -2346,9 +2346,8 @@ export default function App() {
 
           {/* HERO */}
           <div className="hero-section">
-            <h1 className="h1" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4em"}}>
-              <img src="/favicon.svg" alt="" width="64" height="64" style={{flexShrink:0,display:"inline-block",verticalAlign:"middle"}} />
-              <span>STREET PARK <em>NOW.</em></span>
+            <h1 className="h1">
+              STREET PARK <em>NOW.</em>
             </h1>
             <p className="app-tagline">Know When To Park & When To Move</p>
             <div className="search-section">
