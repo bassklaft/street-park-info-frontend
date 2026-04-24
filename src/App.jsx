@@ -632,18 +632,29 @@ function fetchHeatmap(lat, lng) {
   return p;
 }
 
-function HeatMap({ userLat, userLng, onStreetClick }) {
+function HeatMap({ userLat, userLng, onStreetClick, liveTracking, canLiveTrack, onLiveTrackingChange }) {
   const divRef = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const polylinesRef = useRef([]);
+  const lastFetchRef = useRef({ lat: userLat, lng: userLng });
+  const watchIdRef = useRef(null);
+
+  // Draw helper exposed via ref closure so both the init effect and the
+  // live-tracking effect can repaint the map after a 200m move.
+  const drawPolylinesRef = useRef(null);
 
   useEffect(() => {
     if (!userLat || !userLng || !divRef.current) return;
     let alive = true;
-    const polylines = [];
+    lastFetchRef.current = { lat: userLat, lng: userLng };
 
-    // Kick off the heatmap fetch immediately — in parallel with Google Maps
-    // loading and initialization. If loadAll already started this fetch, we
-    // share the in-flight promise via the module-level cache.
     const dataPromise = fetchHeatmap(userLat, userLng);
+
+    const clearPolylines = () => {
+      polylinesRef.current.forEach(p => p.setMap(null));
+      polylinesRef.current = [];
+    };
 
     const drawPolylines = (map, data) => {
       if (!alive || !data || !data.length) return;
@@ -659,12 +670,11 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
           strokeWeight: weights[s.urgency] || 4,
           zIndex: s.urgency === "red" ? 3 : s.urgency === "yellow" ? 2 : 1,
         });
-        if (onStreetClick && s.street) {
-          pl.addListener("click", () => onStreetClick(s.street));
-        }
-        polylines.push(pl);
+        if (onStreetClick && s.street) pl.addListener("click", () => onStreetClick(s.street));
+        polylinesRef.current.push(pl);
       });
     };
+    drawPolylinesRef.current = { draw: drawPolylines, clear: clearPolylines };
 
     const initMap = () => {
       if (!alive || !divRef.current || !window.google?.maps) return;
@@ -687,11 +697,13 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
           { featureType:"transit", stylers:[{visibility:"off"}] },
         ],
       });
+      mapRef.current = map;
 
-      new window.google.maps.Marker({
+      const marker = new window.google.maps.Marker({
         position: { lat: userLat, lng: userLng }, map,
         icon: { path: window.google.maps.SymbolPath.CIRCLE, scale:8, fillColor:"#3182CE", fillOpacity:1, strokeColor:"#fff", strokeWeight:2 },
       });
+      markerRef.current = marker;
 
       dataPromise.then(data => drawPolylines(map, data));
     };
@@ -700,7 +712,7 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
       initMap();
     } else if (document.querySelector('script[src*="maps.googleapis"]')) {
       const wait = setInterval(() => { if (window.google?.maps) { clearInterval(wait); initMap(); } }, 200);
-      return () => { alive = false; clearInterval(wait); polylines.forEach(p => p.setMap(null)); };
+      return () => { alive = false; clearInterval(wait); clearPolylines(); };
     } else {
       const s = document.createElement("script");
       s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&libraries=places&loading=async`;
@@ -708,8 +720,47 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
       document.head.appendChild(s);
     }
 
-    return () => { alive = false; polylines.forEach(p => p.setMap(null)); };
+    return () => { alive = false; clearPolylines(); };
   }, [userLat, userLng, onStreetClick]);
+
+  // Live tracking effect: drives watchPosition only when the toggle is on.
+  // Re-center + marker update on every tick; re-fetch heatmap if moved >200m.
+  // Always clears the watch on unmount or when the toggle flips off — the
+  // cleanup is critical to avoid a dangling geolocation watch burning battery.
+  useEffect(() => {
+    if (!liveTracking || !canLiveTrack) return;
+    if (!navigator.geolocation) return;
+
+    const id = navigator.geolocation.watchPosition(
+      ({ coords: { latitude, longitude } }) => {
+        const map = mapRef.current;
+        const marker = markerRef.current;
+        if (!map || !marker) return;
+        const newPos = { lat: latitude, lng: longitude };
+        marker.setPosition(newPos);
+        map.panTo(newPos);
+        const last = lastFetchRef.current;
+        if (haversineKm(last.lat, last.lng, latitude, longitude) > 0.2) {
+          lastFetchRef.current = newPos;
+          fetchHeatmap(latitude, longitude).then(data => {
+            const ctrl = drawPolylinesRef.current;
+            if (!ctrl) return;
+            ctrl.clear();
+            ctrl.draw(map, data);
+          });
+        }
+      },
+      (err) => console.error("watchPosition error:", err.code, err.message),
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+    watchIdRef.current = id;
+    return () => {
+      if (watchIdRef.current != null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  }, [liveTracking, canLiveTrack]);
 
   return (
     <div style={{position:"relative",marginBottom:16}}>
@@ -721,6 +772,30 @@ function HeatMap({ userLat, userLng, onStreetClick }) {
             <span style={{fontFamily:"var(--mono)",fontSize:".58rem",color:"var(--white)"}}>{l}</span>
           </div>
         ))}
+      </div>
+      {/* Live Parking Tracker — unlimited tier only */}
+      <div style={{padding:"8px 12px",background:"var(--g2)",borderTop:"1px solid #222",display:"flex",alignItems:"center",gap:8}}>
+        {canLiveTrack ? (
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flex:1}}>
+            <input
+              type="checkbox"
+              checked={!!liveTracking}
+              onChange={e => onLiveTrackingChange && onLiveTrackingChange(e.target.checked)}
+              style={{width:16,height:16,accentColor:"var(--yellow)",cursor:"pointer"}}
+            />
+            <span style={{fontFamily:"var(--mono)",fontSize:".68rem",letterSpacing:".05em",color:liveTracking?"var(--yellow)":"var(--white)"}}>
+              📍 I'm Parking Right Now
+              {liveTracking && <span style={{color:"var(--muted)",marginLeft:6}}>· map tracking your location</span>}
+            </span>
+          </label>
+        ) : (
+          <div style={{display:"flex",alignItems:"center",gap:8,flex:1,opacity:0.55}}>
+            <div style={{width:16,height:16,border:"1px solid #444",borderRadius:2,flexShrink:0}} />
+            <span style={{fontFamily:"var(--mono)",fontSize:".68rem",letterSpacing:".05em",color:"var(--muted)"}}>
+              🔒 I'm Parking Right Now — Unlimited+Save only
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1307,6 +1382,7 @@ export default function App() {
   const [authBusy,       setAuthBusy]       = useState(false);
   const [showUserMenu,   setShowUserMenu]   = useState(false);
   const [streetPickerOpen, setStreetPickerOpen] = useState(false);
+  const [liveTracking,     setLiveTracking]     = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showFAQ,        setShowFAQ]        = useState(false);
   const menuRef = useRef(null);
@@ -1735,6 +1811,9 @@ export default function App() {
                 userLat={homeMapCoords.lat}
                 userLng={homeMapCoords.lng}
                 onStreetClick={(street) => { setQuery(street); handleSearch(); }}
+                canLiveTrack={user?.tier === "unlimited"}
+                liveTracking={liveTracking}
+                onLiveTrackingChange={setLiveTracking}
               />
             ) : (
               <CoverageMap onCityClick={(city) => { setQuery(city.name); handleSearch(); }} />
@@ -1792,6 +1871,7 @@ export default function App() {
                     ["Recent 2 on Map","✓","✓","✓"],
                     ["Saved Locations","✗","✗","Up to 10"],
                     ["One-Tap Rerun","✗","✗","✓"],
+                    ["Live Parking Tracker","✗","✗","✓"],
                   ].map(([feat,b,p,u],ri) => (
                     <tr key={feat} style={{background:ri%2===0?"#141414":"#121212"}}>
                       <td style={{padding:"11px 12px 11px 14px",color:"var(--white)",borderBottom:"1px solid #1f1f1f",fontWeight:500}}>{feat}</td>
@@ -2132,6 +2212,9 @@ export default function App() {
                   userLat={coords.lat}
                   userLng={coords.lng}
                   onStreetClick={(street) => { setQuery(street); handleSearch(); }}
+                  canLiveTrack={user?.tier === "unlimited"}
+                  liveTracking={liveTracking}
+                  onLiveTrackingChange={setLiveTracking}
                 />
               ) : (
                 <ParkMap
