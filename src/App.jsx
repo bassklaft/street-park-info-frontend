@@ -4,70 +4,141 @@ const API = import.meta.env?.VITE_BACKEND_URL || "https://street-park-info-backe
 const GOOGLE_KEY = import.meta.env?.VITE_GOOGLE_MAPS_KEY || "";
 
 // ─── GOOGLE PLACES AUTOCOMPLETE INPUT ────────────────────────────────────────
-function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter, onGPSClick, showDropdown }) {
+// Custom dropdown powered by AutocompleteService — returns businesses AND
+// addresses, sorted by Google's ranking which is biased by `location`+`radius`
+// when the user's coordinates are known. `origin` enables distance_meters in
+// each prediction, so we can render "1.3 km" next to each suggestion.
+function fmtDistance(m) {
+  if (m == null || isNaN(m)) return "";
+  if (m < 1000) return `${Math.round(m)} m`;
+  if (m < 10000) return `${(m/1000).toFixed(1)} km`;
+  return `${Math.round(m/1000)} km`;
+}
+
+function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter, onGPSClick, showDropdown, userLat, userLng }) {
   const inputRef = useRef(null);
-  const autocompleteRef = useRef(null);
+  const serviceRef = useRef(null);
+  const placesRef = useRef(null);
+  const sessionTokenRef = useRef(null);
+  const debounceRef = useRef(null);
+  const [predictions, setPredictions] = useState([]);
+  const [focused, setFocused] = useState(false);
 
+  // Boot Google Maps + Places services
   useEffect(() => {
-    if (!GOOGLE_KEY || !inputRef.current) return;
-
-    const loadGoogle = () => {
-      if (window.google?.maps?.places) {
-        initAutocomplete();
-        return;
-      }
-      if (document.querySelector('script[src*="maps.googleapis"]')) {
-        // Wait for existing script to load
-        const wait = setInterval(() => {
-          if (window.google?.maps?.places) { clearInterval(wait); initAutocomplete(); }
-        }, 100);
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&libraries=places&loading=async`;
-      script.async = true;
-      script.defer = true;
-      script.onload = initAutocomplete;
-      document.head.appendChild(script);
+    if (!GOOGLE_KEY) return;
+    const init = () => {
+      if (!window.google?.maps?.places) return false;
+      serviceRef.current = new window.google.maps.places.AutocompleteService();
+      // PlacesService requires an HTMLElement; an offscreen div is the standard pattern.
+      placesRef.current = new window.google.maps.places.PlacesService(document.createElement("div"));
+      sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+      return true;
     };
+    if (init()) return;
+    if (document.querySelector('script[src*="maps.googleapis"]')) {
+      const iv = setInterval(() => { if (init()) clearInterval(iv); }, 100);
+      return () => clearInterval(iv);
+    }
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&libraries=places&loading=async`;
+    script.async = true;
+    script.defer = true;
+    script.onload = init;
+    document.head.appendChild(script);
+  }, []);
 
-    const initAutocomplete = () => {
-      if (!inputRef.current || !window.google?.maps?.places) return;
-      const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+  // Fetch predictions (debounced) whenever the input changes
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!value || value.trim().length < 2) { setPredictions([]); return; }
+    debounceRef.current = setTimeout(() => {
+      if (!serviceRef.current || !window.google?.maps) return;
+      const req = {
+        input: value,
         componentRestrictions: { country: ["us", "ca"] },
-        fields: ["formatted_address", "geometry", "name", "address_components"],
-        types: ["geocode", "establishment"],
-      });
-      ac.addListener("place_changed", () => {
-        const place = ac.getPlace();
-        if (place.geometry?.location) {
-          const lat = place.geometry.location.lat();
-          const lng = place.geometry.location.lng();
-          const label = place.name || place.formatted_address || "";
-          onPlaceSelect({ lat, lng, label, formatted: place.formatted_address });
+        sessionToken: sessionTokenRef.current,
+      };
+      if (userLat && userLng) {
+        const center = new window.google.maps.LatLng(userLat, userLng);
+        req.origin = center;        // enables distance_meters in predictions
+        req.location = center;      // bias results to near the user
+        req.radius = 50000;         // ~50km — broad enough for "naya" style searches
+      }
+      serviceRef.current.getPlacePredictions(req, (preds, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && preds) {
+          setPredictions(preds);
+        } else {
+          setPredictions([]);
         }
       });
-      autocompleteRef.current = ac;
-    };
+    }, 200);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [value, userLat, userLng]);
 
-    loadGoogle();
-  }, []);
+  const selectPrediction = useCallback((p) => {
+    if (!placesRef.current) return;
+    placesRef.current.getDetails({
+      placeId: p.place_id,
+      fields: ["geometry", "name", "formatted_address"],
+      sessionToken: sessionTokenRef.current,
+    }, (place, status) => {
+      if (status !== window.google.maps.places.PlacesServiceStatus.OK || !place?.geometry?.location) return;
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
+      const label = place.name || p.structured_formatting?.main_text || place.formatted_address || "";
+      // Billing best practice: open a new session token after each selection.
+      sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+      setPredictions([]);
+      onPlaceSelect({ lat, lng, label, formatted: place.formatted_address });
+    });
+  }, [onPlaceSelect]);
+
+  const showPredictions = focused && predictions.length > 0;
+  const showGpsHint = focused && showDropdown && predictions.length === 0;
 
   return (
     <div style={{position:"relative",flex:1}}>
       <input
         ref={inputRef}
         type="text"
-        placeholder="Street, Neighborhood, Landmark, Address…"
+        placeholder="Business, Street, Address…"
         value={value}
         onChange={e => onChange(e.target.value)}
-        onFocus={onFocus}
-        onBlur={onBlur}
+        onFocus={e => { setFocused(true); if (onFocus) onFocus(e); }}
+        onBlur={e => { setTimeout(() => setFocused(false), 180); if (onBlur) onBlur(e); }}
         onKeyDown={e => e.key === "Enter" && onEnter()}
         style={{width:"100%",background:"transparent",border:"none",outline:"none",color:"var(--white)",fontFamily:"var(--mono)",fontSize:".9rem",padding:"16px 20px",letterSpacing:".04em",boxSizing:"border-box"}}
       />
-      {/* GPS dropdown option — shows when focused and no query typed */}
-      {showDropdown && (
+      {showPredictions && (
+        <div className="search-dropdown">
+          {predictions.slice(0, 7).map(p => (
+            <div
+              key={p.place_id}
+              className="search-dropdown-item"
+              onMouseDown={(e) => { e.preventDefault(); selectPrediction(p); }}
+              style={{alignItems:"center"}}
+            >
+              <div style={{flex:1,minWidth:0,paddingRight:10}}>
+                <div style={{fontFamily:"var(--body)",fontSize:"1.1rem",fontWeight:600,color:"var(--white)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {p.structured_formatting?.main_text || p.description}
+                </div>
+                {p.structured_formatting?.secondary_text && (
+                  <div style={{fontFamily:"var(--mono)",fontSize:".68rem",color:"var(--muted)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {p.structured_formatting.secondary_text}
+                  </div>
+                )}
+              </div>
+              {p.distance_meters != null && (
+                <div style={{fontFamily:"var(--mono)",fontSize:".68rem",color:"var(--yellow)",flexShrink:0,letterSpacing:".05em"}}>
+                  {fmtDistance(p.distance_meters)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {showGpsHint && (
         <div className="search-dropdown">
           <div className="search-dropdown-item" onMouseDown={onGPSClick}>
             <span style={{marginRight:10,fontSize:"1.1rem"}}>📍</span>
@@ -993,7 +1064,7 @@ function DraggableCarousel() {
 }
 
 // ─── SAVED LOCATIONS PAGE ────────────────────────────────────────────────────
-function SavedLocationsPage({ onDone, onSelectLocation }) {
+function SavedLocationsPage({ onDone, onSelectLocation, userLat, userLng }) {
   const [list, setList] = useState([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -1107,6 +1178,8 @@ function SavedLocationsPage({ onDone, onSelectLocation }) {
               onEnter={()=>{}}
               onGPSClick={()=>{}}
               showDropdown={false}
+              userLat={userLat}
+              userLng={userLng}
             />
           </div>
           <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",marginTop:8,letterSpacing:".08em"}}>
@@ -1609,6 +1682,8 @@ export default function App() {
                     onEnter={handleSearch}
                     onGPSClick={handleGPS}
                     showDropdown={searchFocused && !query}
+                    userLat={coords?.lat || homeMapCoords?.lat}
+                    userLng={coords?.lng || homeMapCoords?.lng}
                   />
                   <button onClick={handleSearch}>GO</button>
                 </div>
@@ -1827,6 +1902,8 @@ export default function App() {
       {phase === "saved" && user?.tier === "unlimited" && (
         <SavedLocationsPage
           onDone={resetHome}
+          userLat={coords?.lat || homeMapCoords?.lat}
+          userLng={coords?.lng || homeMapCoords?.lng}
           onSelectLocation={(item) => handlePlaceSelect({
             lat: item.lat,
             lng: item.lng,
@@ -1962,6 +2039,8 @@ export default function App() {
                 onEnter={handleSearch}
                 onGPSClick={handleGPS}
                 showDropdown={searchFocused && !query}
+                userLat={coords?.lat || homeMapCoords?.lat}
+                userLng={coords?.lng || homeMapCoords?.lng}
               />
               <button onClick={handleSearch}>GO</button>
             </div>
