@@ -80,6 +80,8 @@ function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter,
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!value || value.trim().length < 2) { setPredictions([]); return; }
     debounceRef.current = setTimeout(() => {
+      // 80ms is enough to coalesce fast typists' keystrokes without making
+      // the dropdown feel sluggish. Autocomplete calls are cheap.
       if (!serviceRef.current || !window.google?.maps) return;
       // Strip unit/apt/suite/floor markers — including comma-prefixed forms
       // like "395 Leonard St, Unit 333" and hash forms like "395 Leonard #333"
@@ -116,7 +118,7 @@ function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter,
           setPredictions([]);
         }
       });
-    }, 200);
+    }, 80);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [value, userLat, userLng]);
 
