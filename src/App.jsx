@@ -2321,13 +2321,9 @@ export default function App() {
           <button
             className="home-btn"
             onClick={resetHome}
-            style={{display:"inline-flex",alignItems:"center",gap:"0.4em"}}
             aria-label="Home"
           >
-            <img src="/favicon.svg" alt="" width="18" height="18" style={{display:"inline-block",verticalAlign:"middle"}} />
-            <span style={{display:"inline-flex",alignItems:"center"}}>
-              H<svg viewBox="0 0 10 11" style={{width:"0.6em",height:"0.75em",verticalAlign:"-0.05em",display:"inline-block",marginLeft:"0.08em",marginRight:"0.04em"}} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="miter" strokeLinecap="square"><polyline points="0.5,6 5,0.8 9.5,6"/><polyline points="2,5 2,10.5 8,10.5 8,5"/></svg>ME
-            </span>
+            HOME
           </button>
           <div style={{width:110,display:"flex",justifyContent:"flex-end"}}>
             {user && (
