@@ -1,7 +1,7 @@
 {
   "name": "Street Park Now",
   "short_name": "Street Park Now",
-  "description": "Street parking info for your city",
+  "description": "Know When To Park & When To Move",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#080808",

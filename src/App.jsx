@@ -54,8 +54,18 @@ function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter,
     if (!value || value.trim().length < 2) { setPredictions([]); return; }
     debounceRef.current = setTimeout(() => {
       if (!serviceRef.current || !window.google?.maps) return;
+      // Strip unit/apt/suite/floor markers before sending to Google. These
+      // confuse the ranker: "395 Leonard St Unit 333" was resolving to
+      // Tribeca instead of Williamsburg because Google matched on "333"
+      // heavily. The backend /api/geocode already strips these; doing it
+      // client-side too keeps autocomplete predictions consistent.
+      const cleaned = value
+        .replace(/\b(apt|apartment|unit|suite|ste|fl|floor|rm|room)\b\s*[\w-]*/gi, "")
+        .replace(/#\s*[\w-]+/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
       const req = {
-        input: value,
+        input: cleaned || value,
         componentRestrictions: { country: ["us", "ca"] },
         sessionToken: sessionTokenRef.current,
       };
@@ -1892,10 +1902,41 @@ export default function App() {
             )}
           </div>
 
-          {/* Recent Searches — collapsible, logged-in users, last 5, one-tap rerun.
-              Max-height + overflow:hidden drive the smooth expand/collapse. */}
-          {user && savedSearches.length > 0 && (
-            <div style={{width:"100%",maxWidth:560,padding:"16px 24px 0"}}>
+          {/* Saved Locations button — always visible; unlimited tier tap goes
+              to the Saved Locations page, other tiers (or logged-out) hit the
+              paywall. Intentionally distinct from Recent Searches below. */}
+          <div style={{width:"100%",maxWidth:560,padding:"16px 24px 0"}}>
+            {(() => {
+              const canSave = user?.tier === "unlimited";
+              return (
+                <button
+                  onClick={() => {
+                    if (canSave) { localStorage.removeItem("spn_last_phase"); setPhase("saved"); }
+                    else openPaywall();
+                  }}
+                  style={{
+                    width:"100%",background:"var(--g2)",
+                    border:`1px solid ${canSave ? "var(--yellow)" : "#2a2a2a"}`,
+                    padding:"10px 14px",cursor:"pointer",
+                    display:"flex",alignItems:"center",justifyContent:"space-between",
+                    fontFamily:"var(--mono)",fontSize:".7rem",
+                    color: canSave ? "var(--yellow)" : "var(--muted)",
+                    letterSpacing:".1em",textTransform:"uppercase",
+                    opacity: canSave ? 1 : 0.85,
+                  }}
+                >
+                  <span>{canSave ? "📍 Saved Locations" : "🔒 Saved Locations — Unlimited+Save only"}</span>
+                  <span>{canSave ? "→" : "UPGRADE"}</span>
+                </button>
+              );
+            })()}
+          </div>
+
+          {/* Recent Searches — available to ALL users, last 3, one-tap rerun.
+              Distinct from Saved Locations: transient browsing history, no
+              paywall. Collapsible; collapsed by default. */}
+          {savedSearches.length > 0 && (
+            <div style={{width:"100%",maxWidth:560,padding:"12px 24px 0"}}>
               <button
                 onClick={() => setRecentOpen(v => !v)}
                 style={{
@@ -1907,16 +1948,16 @@ export default function App() {
                 }}
                 aria-expanded={recentOpen}
               >
-                <span>🕐 Recent Searches {savedSearches.length > 0 && <span style={{color:"var(--muted)",marginLeft:6}}>({Math.min(5, savedSearches.length)})</span>}</span>
+                <span>🕐 Recent Searches <span style={{color:"var(--muted)",marginLeft:6}}>({Math.min(3, savedSearches.length)})</span></span>
                 <span style={{display:"inline-block",transition:"transform .2s ease",transform:recentOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
               </button>
               <div style={{
                 overflow:"hidden",
-                maxHeight: recentOpen ? `${savedSearches.slice(0,5).length * 64 + 10}px` : "0px",
+                maxHeight: recentOpen ? `${savedSearches.slice(0,3).length * 64 + 10}px` : "0px",
                 transition:"max-height .25s ease",
               }}>
                 <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
-                  {savedSearches.slice(0, 5).map(s => (
+                  {savedSearches.slice(0, 3).map(s => (
                     <button
                       key={s.id}
                       onClick={() => handlePlaceSelect({ lat: s.lat, lng: s.lng, label: s.label, formatted: s.label })}
