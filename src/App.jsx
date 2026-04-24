@@ -232,6 +232,16 @@ async function getCleaning(street, lat, lng) {
 }
 
 // Batch version for neighborhoods/zips — one API call instead of N
+async function getRestrictions(streets, borough) {
+  if (!streets?.length || !borough) return {};
+  try {
+    const p = new URLSearchParams({ streets: streets.join(","), borough });
+    const r = await fetch(`${API}/api/restrictions?${p}`);
+    if (!r.ok) return {};
+    return await r.json();
+  } catch { return {}; }
+}
+
 async function getCleaningBatch(streets, lat, lng, borough) {
   try {
     const p = new URLSearchParams({ streets: streets.join(",") });
@@ -1258,6 +1268,7 @@ export default function App() {
   const [coords,         setCoords]         = useState(null);
   const [err,            setErr]            = useState(null);
   const [cleaning,       setCleaning]       = useState([]);
+  const [restrictions,   setRestrictions]   = useState({});
   const [films,          setFilms]          = useState([]);
   const [events,         setEvents]         = useState([]);
   const [weather,        setWeather]        = useState(null);
@@ -1392,16 +1403,18 @@ export default function App() {
       ? getCleaningBatch(streets, loc.lat, loc.lng, loc.borough)
       : loadCleaningForStreets(streets, loc.lat, loc.lng);
 
-    const [cR, fR, evR, wxR, aR] = await Promise.allSettled([
+    const [cR, fR, evR, wxR, aR, rR] = await Promise.allSettled([
       cleaningCall,
       getFilms(loc.street, loc.borough, loc.lat, loc.lng), getEvents(loc.borough),
       getWeather(loc.lat, loc.lng), getASP(),
+      getRestrictions(streets, loc.borough),
     ]);
     setCleaning(cR.status === "fulfilled" ? cR.value : []);
     setFilms(fR.status === "fulfilled" ? fR.value : []);
     setEvents(evR.status === "fulfilled" ? evR.value : []);
     setWeather(wxR.status === "fulfilled" ? wxR.value : null);
     setAsp(aR.status === "fulfilled" ? aR.value : null);
+    setRestrictions(rR.status === "fulfilled" ? (rR.value || {}) : {});
     setSearchFocused(false);
     setQuery("");
     localStorage.setItem("spn_last_phase", "dash");
@@ -1433,7 +1446,7 @@ export default function App() {
         const saved = Storage.saveSearch(loc);
         if (saved) setSavedSearches(saved);
         setPhase("dash");
-        setCleaning([]); setFilms([]); setEvents([]); setWeather(null); setAsp(null);
+        setCleaning([]); setRestrictions({}); setFilms([]); setEvents([]); setWeather(null); setAsp(null);
       } else {
         await loadAll(loc);
       }
@@ -2260,6 +2273,54 @@ export default function App() {
                     );
                   })}
               </div>
+
+              {/* Other Parking Restrictions — NYC only (nfid-uabd signs) */}
+              {(() => {
+                const allRestrictions = Object.entries(restrictions || {})
+                  .flatMap(([street, arr]) => (arr || []).map(r => ({ ...r, street })));
+                if (allRestrictions.length === 0) return null;
+                const TYPE_META = {
+                  tow_away:          { icon: "🚨", label: "Tow-Away Zone", color: "var(--red)" },
+                  fire_zone:         { icon: "🚒", label: "Fire Zone",     color: "var(--red)" },
+                  no_parking_always: { icon: "⛔", label: "No Parking Anytime", color: "var(--red)" },
+                  bus_stop:          { icon: "🚌", label: "Bus Stop",      color: "var(--orange)" },
+                  no_parking_hours:  { icon: "⏰", label: "No Parking (hours)", color: "var(--orange)" },
+                  time_limit:        { icon: "⏱", label: "Time-Limited",   color: "var(--yellow)" },
+                  loading_zone:      { icon: "🚚", label: "Loading Zone",  color: "var(--yellow)" },
+                  permit_only:       { icon: "🪪", label: "Permit Only",   color: "var(--yellow)" },
+                };
+                return (
+                  <div className="sec">
+                    <div className="sec-hd">🛑 Other Parking Restrictions <span className="badge">{allRestrictions.length}</span></div>
+                    <div className="sec-note" style={{fontFamily:"var(--mono)",fontSize:".65rem",color:"var(--muted)",marginBottom:10,letterSpacing:".04em"}}>Signs posted by NYC DOT on this block (tow-away, time-limited, permit, loading, etc.)</div>
+                    {allRestrictions.slice(0, 30).map((r, i) => {
+                      const meta = TYPE_META[r.type] || { icon:"⚠", label:r.type, color:"var(--muted)" };
+                      return (
+                        <div key={i} className="clean-card" style={{borderLeft:`3px solid ${meta.color}`}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                            <span style={{fontSize:"1rem"}}>{meta.icon}</span>
+                            <span style={{fontFamily:"var(--mono)",fontSize:".68rem",letterSpacing:".08em",color:meta.color,textTransform:"uppercase"}}>{meta.label}</span>
+                          </div>
+                          {isMulti && r.street && <div className="street-lbl">{r.street}</div>}
+                          <div style={{fontFamily:"var(--body)",fontSize:".95rem",color:"var(--white)",lineHeight:1.4,marginTop:4}}>{r.description}</div>
+                          {(r.side || r.block) && (
+                            <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",marginTop:6,letterSpacing:".04em"}}>
+                              {r.side && <>Side: {r.side === "L" ? "Left/Even" : r.side === "R" ? "Right/Odd" : r.side}</>}
+                              {r.side && r.block && " · "}
+                              {r.block && <>Block: {r.block}</>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {allRestrictions.length > 30 && (
+                      <div style={{fontFamily:"var(--mono)",fontSize:".65rem",color:"var(--muted)",padding:"8px 4px",letterSpacing:".04em"}}>
+                        …and {allRestrictions.length - 30} more signs on these blocks
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Film permits */}
               <div className="sec">
