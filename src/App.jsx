@@ -1552,11 +1552,22 @@ export default function App() {
     // Explicit home nav clears everything that could trigger an auto-rerun
     // or keep the home-page map in heatmap mode. spn_last_phase is cleared
     // so a subsequent refresh stays on home rather than restoring results.
+    // Tapping HOME while already on home gives visible feedback: close any
+    // open dropdowns/menus, scroll to top, close the recent-searches
+    // accordion. Without this, React sees "state already home" and doesn't
+    // re-render, making the button feel dead.
     localStorage.removeItem("spn_last_phase");
     setPhase("home"); setLocData(null); setSignedUp(false);
     setQuery(""); setSelectedEstab(null); setErr(null);
-    setHomeMapCoords(null);     // force the home-page map back to CoverageMap
+    setHomeMapCoords(null);
     setLiveTracking(false);
+    setSearchFocused(false);
+    setShowUserMenu(false);
+    setRecentOpen(false);
+    // Refresh the recent-searches list from storage in case it changed.
+    setSavedSearches(Storage.getSaved());
+    // Force scroll-to-top so the reset is perceptible even when already on home.
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {}
   }, []);
 
   const canSearch = useCallback(() => {
@@ -1709,17 +1720,22 @@ export default function App() {
 
   const handleSearchFocus = useCallback(() => {
     setSearchFocused(true);
-    // Request location when user taps search bar if not yet determined.
-    // We only update locationAllowed; setting homeMapCoords would switch the
-    // home-page map from CoverageMap to HeatMap, which the user wants to opt
-    // into explicitly (via the GPS or Saved Locations buttons).
-    if (locationAllowed === null && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        () => { setLocationAllowed(true); },
-        () => { setLocationAllowed(false); }
-      );
-    }
-  }, [locationAllowed, homeMapCoords]);
+    // Silently fetch GPS on every focus so the autocomplete dropdown + the
+    // eventual handleSearch call get biased toward the user's actual spot.
+    // Writes to `coords` (used by PlacesInput for bounds+origin and by
+    // handleSearch for geocode bias) but NOT homeMapCoords — the home-page
+    // map stays on CoverageMap until the user explicitly taps "Use my
+    // current location". Skips the call entirely if coords are already set.
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      ({ coords: { latitude: lat, longitude: lng } }) => {
+        setLocationAllowed(true);
+        setCoords(prev => prev || { lat, lng });
+      },
+      () => { setLocationAllowed(false); },
+      { timeout: 8000, maximumAge: 30000, enableHighAccuracy: false }
+    );
+  }, []);
 
   const handleCheckout = useCallback(async (plan) => {
     // Require login before checkout
