@@ -783,13 +783,15 @@ function HeatMap({ userLat, userLng, onStreetClick, liveTracking, canLiveTrack, 
 
       // Point-restriction dots — fetch once per mount, render as small
       // colored circles at each sign location. Only show the high-stakes
-      // categories (fire zones + tow-away) to avoid the hundreds of
-      // "no parking anytime" and bus-stop dots that clutter the view.
-      // Zoom-gated at level 16+ so they don't appear in the default view.
+      // categories (fire zones + tow-away). Zoom-gated at level 16+ so
+      // they don't appear in the default view.
+      // Colors are INTENTIONALLY different from the polyline palette
+      // (red / yellow / green / gray) so a red dot can't be mistaken
+      // for a red street.
       const POINT_TYPES_SHOWN = new Set(["fire_zone", "tow_away"]);
       const POINT_COLORS = {
-        fire_zone: "#E53E3E",
-        tow_away:  "#E53E3E",
+        fire_zone: "#E91E63",  // magenta/pink — distinct from polyline red
+        tow_away:  "#7C3AED",  // purple — distinct from polyline red
       };
       const POINT_LABELS = {
         fire_zone: "🚒 Fire Zone",
@@ -887,10 +889,24 @@ function HeatMap({ userLat, userLng, onStreetClick, liveTracking, canLiveTrack, 
   return (
     <div style={{position:"relative",marginBottom:16}}>
       <div ref={divRef} style={{width:"100%",height:"300px",border:"1px solid #2a2a2a",background:"#111",display:"block"}} />
-      <div style={{display:"flex",gap:16,padding:"8px 12px",background:"var(--g2)",borderTop:"1px solid #222",flexWrap:"wrap"}}>
+      {/* Line legend — polyline urgency colors */}
+      <div style={{display:"flex",gap:16,padding:"8px 12px",background:"var(--g2)",borderTop:"1px solid #222",flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontFamily:"var(--mono)",fontSize:".52rem",color:"var(--muted)",letterSpacing:".06em",textTransform:"uppercase"}}>Lines:</span>
         {[["#E53E3E","Move Today/Tomorrow"],["#F7C948","Move In 2-3 Days"],["#38A169","Safe 4+ Days"],["#444","No Data"]].map(([c,l]) => (
           <div key={l} style={{display:"flex",alignItems:"center",gap:6}}>
             <div style={{width:24,height:4,background:c,borderRadius:2}} />
+            <span style={{fontFamily:"var(--mono)",fontSize:".58rem",color:"var(--white)"}}>{l}</span>
+          </div>
+        ))}
+      </div>
+      {/* Dot legend — point restrictions visible at zoom 16+ only.
+          Colors intentionally differ from the line palette so a red dot
+          can't be mistaken for a red street. */}
+      <div style={{display:"flex",gap:16,padding:"6px 12px",background:"var(--g2)",borderTop:"1px solid #1a1a1a",flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontFamily:"var(--mono)",fontSize:".52rem",color:"var(--muted)",letterSpacing:".06em",textTransform:"uppercase"}}>Dots (zoom in 16+):</span>
+        {[["#E91E63","🚒 Fire Zone"],["#7C3AED","🚨 Tow-Away"]].map(([c,l]) => (
+          <div key={l} style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:8,height:8,background:c,borderRadius:"50%",border:"1px solid #000"}} />
             <span style={{fontFamily:"var(--mono)",fontSize:".58rem",color:"var(--white)"}}>{l}</span>
           </div>
         ))}
