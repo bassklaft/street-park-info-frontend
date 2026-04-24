@@ -2440,6 +2440,11 @@ export default function App() {
                   ))}
               </div>
 
+              {/* Disclaimer — always visible above the weather section */}
+              <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--muted)",lineHeight:1.5,letterSpacing:".02em",padding:"12px 4px",margin:"8px 0",borderTop:"1px solid #1a1a1a",borderBottom:"1px solid #1a1a1a"}}>
+                ⚠️ Always check physical signs. Don't park in front of hydrants, bus stops, driveways, hospitals, police stations, fire stations, or tow zones — we're not liable for tickets from point-specific restrictions. 🚨
+              </div>
+
               {/* Weather */}
               <div className="sec">
                 <div className="sec-hd">🌤 Weather Forecast</div>
