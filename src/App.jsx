@@ -1507,6 +1507,10 @@ export default function App() {
   const [homeMapCoords,  setHomeMapCoords]  = useState(null);
   const [searchFocused,  setSearchFocused]  = useState(false);
   const [locationAllowed, setLocationAllowed] = useState(null);
+  // Dedupe GPS requests so we only prompt once per session. The browser
+  // itself remembers granted/denied across sessions — this ref just keeps
+  // us from firing redundant getCurrentPosition calls within one visit.
+  const locationRequestedRef = useRef(false);
   const [scrolled,       setScrolled]       = useState(false);
   // Auth state
   const [user,           setUser]           = useState(() => Auth.getUser());
@@ -1718,24 +1722,40 @@ export default function App() {
     } catch(e) { setErr(e.message); setPhase("home"); }
   }, [canSearch, tickSearch, loadAll]);
 
-  const handleSearchFocus = useCallback(() => {
-    setSearchFocused(true);
-    // Silently fetch GPS on every focus so the autocomplete dropdown + the
-    // eventual handleSearch call get biased toward the user's actual spot.
-    // Writes to `coords` (used by PlacesInput for bounds+origin and by
-    // handleSearch for geocode bias) but NOT homeMapCoords — the home-page
-    // map stays on CoverageMap until the user explicitly taps "Use my
-    // current location". Skips the call entirely if coords are already set.
+  // Request browser geolocation at most once per session. Honors the
+  // browser's persisted permission state (granted → silent fetch; denied
+  // → skip and don't nag; prompt → ask now and remember we've asked).
+  // For logged-in users the browser's own memory already spans sessions,
+  // so we don't add our own localStorage layer — that would just diverge
+  // from what the browser actually does.
+  const ensureLocation = useCallback(async () => {
     if (!navigator.geolocation) return;
+    if (coords) return;                      // Already have a position — skip
+    if (locationAllowed === false) return;   // Already denied this session
+    if (locationRequestedRef.current) return;// In-flight or already asked
+    locationRequestedRef.current = true;
+
+    // Peek at the Permissions API so we can bail on a known "denied"
+    // without firing a silent failure.
+    try {
+      const perm = navigator.permissions && await navigator.permissions.query({ name: "geolocation" });
+      if (perm?.state === "denied") { setLocationAllowed(false); return; }
+    } catch {}
+
     navigator.geolocation.getCurrentPosition(
       ({ coords: { latitude: lat, longitude: lng } }) => {
         setLocationAllowed(true);
         setCoords(prev => prev || { lat, lng });
       },
       () => { setLocationAllowed(false); },
-      { timeout: 8000, maximumAge: 30000, enableHighAccuracy: false }
+      { timeout: 8000, maximumAge: 60000, enableHighAccuracy: false }
     );
-  }, []);
+  }, [coords, locationAllowed]);
+
+  const handleSearchFocus = useCallback(() => {
+    setSearchFocused(true);
+    ensureLocation();
+  }, [ensureLocation]);
 
   const handleCheckout = useCallback(async (plan) => {
     // Require login before checkout
@@ -1959,8 +1979,14 @@ export default function App() {
             </div>
           </div>
 
-          {/* MAP SECTION */}
-          <div style={{width:"100%",maxWidth:560,padding:"20px 24px 0"}}>
+          {/* MAP SECTION. onPointerDown catches taps that land anywhere in
+              the map wrapper (including on the Google Maps canvas, which
+              lets click events bubble to the container). Triggers the
+              same ensureLocation() gate the search bar uses. */}
+          <div
+            style={{width:"100%",maxWidth:560,padding:"20px 24px 0"}}
+            onPointerDown={ensureLocation}
+          >
             <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--yellow)",letterSpacing:".12em",textTransform:"uppercase",marginBottom:8,textAlign:"center"}}>
               {homeMapCoords ? "🔥 LIVE PARKING HEAT MAP · TAP A STREET TO SEARCH" : "🟡 NEIGHBORHOODS WE COVER · TAP A NEIGHBORHOOD OR USE SEARCH BAR"}
             </div>
