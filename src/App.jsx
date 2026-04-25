@@ -3173,54 +3173,180 @@ export default function App() {
                 </div>
                 {isMulti && <div className="sec-note">Showing {locData.isPark ? "all bordering streets" : locData.isNeighborhood ? "all streets in this neighborhood" : locData.isGPS ? "nearby streets · closest first" : "streets in this zip"}</div>}
                 {cleaning.length === 0 ? <div className="empty">No street cleaning regulations found for this block.</div>
-                  : cleaning.map((c, i) => {
-                    const isBlurred = !Auth.isLoggedIn() && i >= 2;
-                    const hasToday    = c.days?.includes(today);
-                    const hasUpcoming = !hasToday && c.days?.some(d => d===tomorrow || d===in2days || d===in3days);
-                    // Status banner per card — replaces the plain time string.
-                    const statusLabel = hasToday    ? `🚫 NO PARKING ${c.time || ""}`.trim()
-                                      : hasUpcoming ? `⚠️ NO PARKING ${c.time || ""}`.trim()
-                                      : c.days?.length ? `✅ SAFE TO PARK NOW`
-                                      : c.time ? c.time : "";
-                    const statusColor = hasToday    ? "var(--red)"
-                                      : hasUpcoming ? "var(--yellow)"
-                                      : "#38A169"; // green
-                    return (
-                      <div key={i} style={{position:"relative"}}>
-                        <div className={`clean-card ${hasToday ? "today" : ""}`} style={isBlurred ? {filter:"blur(4px)",userSelect:"none",pointerEvents:"none"} : {}}>
-                          {hasToday && <span className="today-tag">⚠ CLEANING TODAY</span>}
-                          {isMulti && c.street && <div className="street-lbl">{c.street}</div>}
-                          {c.side && <div className="side-tag">{c.side === "L" ? "Left / Even" : c.side === "R" ? "Right / Odd" : c.side}</div>}
-                          <div className="chips">{DAYS.map(d => <span key={d} className={`chip ${c.days?.includes(d) ? "on" : ""}`}>{d}</span>)}</div>
-                          {statusLabel && (
-                            <div style={{fontFamily:"var(--display)",fontSize:"1.35rem",letterSpacing:".04em",color:statusColor,marginTop:8,lineHeight:1.1}}>
-                              {statusLabel}
+                  : (() => {
+                    // Group all schedule entries by street so a Williamsburg
+                    // block doesn't render five separate "RICHARDSON STREET"
+                    // cards (Mon/Thu E side, Tue/Fri W side, Wed N side, etc.)
+                    // — each street gets ONE card with all sides stacked.
+                    const SIDE_LABEL = {
+                      "L": "Left / Even", "R": "Right / Odd",
+                      "N": "North side",  "S": "South side",
+                      "E": "East side",   "W": "West side",
+                      "left / even side":  "Left / Even",
+                      "right / odd side":  "Right / Odd",
+                    };
+                    const niceSide = (s) => {
+                      if (!s) return "";
+                      const lc = String(s).toLowerCase();
+                      return SIDE_LABEL[s] || SIDE_LABEL[lc] || s;
+                    };
+                    const SHORT_DAY = {
+                      Monday:"Mon", Tuesday:"Tue", Wednesday:"Wed",
+                      Thursday:"Thu", Friday:"Fri", Saturday:"Sat", Sunday:"Sun",
+                    };
+                    const shortDay = d => SHORT_DAY[d] || d;
+                    const grouped = {};
+                    const streetOrder = [];
+                    for (const c of cleaning) {
+                      const k = c.street || "(this block)";
+                      if (!(k in grouped)) { grouped[k] = []; streetOrder.push(k); }
+                      grouped[k].push(c);
+                    }
+                    // For "what we checked" pills: count items per street.
+                    const filmsByStreet = {};
+                    for (const f of (films || [])) {
+                      const s = (f.street || "").toUpperCase();
+                      if (!s) continue;
+                      filmsByStreet[s] = (filmsByStreet[s] || 0) + 1;
+                    }
+                    const restrictionsByStreet = {};
+                    for (const [s, arr] of Object.entries(restrictions || {})) {
+                      restrictionsByStreet[s] = (arr || []).length;
+                    }
+
+                    return streetOrder.map((street, idx) => {
+                      const isBlurred = !Auth.isLoggedIn() && idx >= 2;
+                      const sides = grouped[street];
+                      const allDays = new Set();
+                      for (const s of sides) for (const d of (s.days || [])) allDays.add(shortDay(d));
+                      const todayShort = today;
+                      const tomorrowShort = tomorrow;
+                      const in2Short = in2days;
+                      const in3Short = in3days;
+                      const sidesToday = sides.filter(s => (s.days || []).some(d => shortDay(d) === todayShort));
+                      const sidesTomorrow = sides.filter(s => (s.days || []).some(d => shortDay(d) === tomorrowShort));
+                      const sidesUpcoming = sides.filter(s => (s.days || []).some(d => shortDay(d) === in2Short || shortDay(d) === in3Short));
+
+                      const status = sidesToday.length    ? { label: "NO PARKING TODAY",    color: "var(--red)",    icon:"🚫" }
+                                   : sidesTomorrow.length ? { label: "NO PARKING TOMORROW", color: "var(--red)",    icon:"⚠" }
+                                   : sidesUpcoming.length ? { label: "CLEANING IN 2-3 DAYS", color: "var(--yellow)", icon:"⚠" }
+                                   :                        { label: "SAFE TO PARK NOW",    color: "#38A169",       icon:"✓" };
+
+                      const filmCount = filmsByStreet[street.toUpperCase()] || 0;
+                      const restrictionCount = restrictionsByStreet[street] || 0;
+                      const eventCount = (events || []).length; // events are area-wide, not per-street
+                      const checkChips = [
+                        { icon:"🧹", label:"cleaning", count: sides.length, on: sides.length > 0 },
+                        { icon:"🛑", label:"restrictions", count: restrictionCount, on: restrictionCount > 0 },
+                        { icon:"🎬", label:"film", count: filmCount, on: filmCount > 0 },
+                        { icon:"📅", label:"events", count: eventCount, on: eventCount > 0 },
+                      ];
+
+                      return (
+                        <div key={street} style={{position:"relative"}}>
+                          <div
+                            className="clean-card"
+                            style={{
+                              ...(isBlurred ? {filter:"blur(4px)",userSelect:"none",pointerEvents:"none"} : {}),
+                              borderLeft: `3px solid ${status.color}`,
+                              padding: "14px 14px",
+                            }}
+                          >
+                            {/* Header row: street name + status pill */}
+                            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:8}}>
+                              <div className="street-lbl" style={{fontFamily:"var(--display)",fontSize:"1rem",color:"var(--yellow)",letterSpacing:".05em",margin:0}}>{street}</div>
+                              <span style={{
+                                flexShrink:0,
+                                fontFamily:"var(--mono)", fontSize:".58rem", letterSpacing:".08em",
+                                padding:"3px 8px", borderRadius:3,
+                                background: status.color === "var(--red)" ? "rgba(229,62,62,0.14)" : status.color === "var(--yellow)" ? "rgba(247,201,72,0.14)" : "rgba(56,161,105,0.14)",
+                                color: status.color,
+                                border:`1px solid ${status.color}`,
+                              }}>
+                                {status.icon} {status.label}
+                              </span>
                             </div>
-                          )}
-                          {(hasToday || hasUpcoming) && (
-                            <div style={{fontFamily:"var(--mono)",fontSize:".62rem",color:"var(--muted)",letterSpacing:".03em",marginTop:4}}>
-                              Move your car before this window or risk a ticket.
-                            </div>
-                          )}
-                          {c.upcomingDates?.length > 0 && (
-                            <div style={{marginTop:8,display:"flex",flexWrap:"wrap",gap:5}}>
-                              {c.upcomingDates.map((d, di) => (
-                                <span key={di} style={{fontFamily:"var(--mono)",fontSize:".56rem",padding:"2px 7px",background:di===0&&c.days?.includes(today)?"var(--red)":"var(--g1)",color:di===0&&c.days?.includes(today)?"var(--white)":"var(--muted)",border:"1px solid #2a2a2a",letterSpacing:".03em"}}>{d}</span>
+
+                            {/* What we checked — quick chip row */}
+                            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                              {checkChips.map((c, ci) => (
+                                <span key={ci} style={{
+                                  fontFamily:"var(--mono)", fontSize:".55rem", letterSpacing:".04em",
+                                  padding:"2px 7px", borderRadius:2,
+                                  background: c.on ? "#1a1a1a" : "transparent",
+                                  color: c.on ? "var(--white)" : "#444",
+                                  border:`1px solid ${c.on ? "#333" : "#1a1a1a"}`,
+                                }}>
+                                  {c.icon} {c.count} {c.label}
+                                </span>
                               ))}
                             </div>
-                          )}
-                          <div className="clean-raw">{c.raw}</div>
-                        </div>
-                        {isBlurred && i === 2 && (
-                          <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(8,8,8,0.7)",cursor:"pointer"}} onClick={() => setShowAuthModal(true)}>
-                            <div style={{fontFamily:"var(--display)",fontSize:"1.1rem",color:"var(--yellow)",letterSpacing:".06em",textAlign:"center"}}>CREATE A FREE ACCOUNT</div>
-                            <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--white)",letterSpacing:".08em",textAlign:"center"}}>TO UNLOCK ALL RESULTS</div>
-                            <div style={{background:"var(--yellow)",color:"#000",fontFamily:"var(--display)",fontSize:"1rem",padding:"6px 20px",letterSpacing:".08em",marginTop:4}}>SIGN UP FREE →</div>
+
+                            {/* Day pills — union across all sides */}
+                            <div className="chips" style={{marginBottom:10}}>
+                              {DAYS.map(d => <span key={d} className={`chip ${allDays.has(d) ? "on" : ""}`}>{d}</span>)}
+                            </div>
+
+                            {/* Per-side schedule rows */}
+                            {sides.map((s, si) => {
+                              const sDays = (s.days || []).map(shortDay);
+                              const sToday = sDays.includes(todayShort);
+                              const sTomorrow = sDays.includes(tomorrowShort);
+                              const sideColor = sToday ? "var(--red)" : sTomorrow ? "var(--red)" : sDays.some(d => d === in2Short || d === in3Short) ? "var(--yellow)" : "var(--muted)";
+                              return (
+                                <div key={si} style={{
+                                  display:"flex", flexWrap:"wrap", alignItems:"center", gap:8,
+                                  padding:"8px 10px", marginTop: si === 0 ? 0 : 6,
+                                  background:"#0c0c0c", border:"1px solid #1f1f1f", borderRadius:3,
+                                }}>
+                                  <span style={{fontFamily:"var(--mono)",fontSize:".62rem",letterSpacing:".05em",color:sideColor,fontWeight:700,minWidth:90}}>
+                                    {niceSide(s.side) || "Both sides"}
+                                  </span>
+                                  <span style={{fontFamily:"var(--mono)",fontSize:".68rem",color:"var(--white)",letterSpacing:".03em"}}>
+                                    {sDays.join(" / ")}
+                                  </span>
+                                  {s.time && (
+                                    <span style={{fontFamily:"var(--mono)",fontSize:".68rem",color:"var(--white)",letterSpacing:".03em",marginLeft:"auto"}}>
+                                      {s.time}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {/* Next dates strip — show today/tomorrow/etc highlighted in red, rest muted */}
+                            {(() => {
+                              const dates = [...new Set(sides.flatMap(s => s.upcomingDates || []))].slice(0, 6);
+                              if (!dates.length) return null;
+                              return (
+                                <div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:5}}>
+                                  {dates.map((d, di) => {
+                                    const isHot = di === 0 && (sidesToday.length || sidesTomorrow.length);
+                                    return (
+                                      <span key={di} style={{
+                                        fontFamily:"var(--mono)", fontSize:".55rem", letterSpacing:".03em",
+                                        padding:"2px 7px",
+                                        background: isHot ? "var(--red)" : "var(--g1)",
+                                        color:      isHot ? "var(--white)" : "var(--muted)",
+                                        border:"1px solid #2a2a2a",
+                                      }}>{d}</span>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                          {isBlurred && idx === 2 && (
+                            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(8,8,8,0.7)",cursor:"pointer"}} onClick={() => setShowAuthModal(true)}>
+                              <div style={{fontFamily:"var(--display)",fontSize:"1.1rem",color:"var(--yellow)",letterSpacing:".06em",textAlign:"center"}}>CREATE A FREE ACCOUNT</div>
+                              <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--white)",letterSpacing:".08em",textAlign:"center"}}>TO UNLOCK ALL RESULTS</div>
+                              <div style={{background:"var(--yellow)",color:"#000",fontFamily:"var(--display)",fontSize:"1rem",padding:"6px 20px",letterSpacing:".08em",marginTop:4}}>SIGN UP FREE →</div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
               </div>
 
               {/* Other Parking Restrictions — NYC only (nfid-uabd signs) */}
