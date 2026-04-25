@@ -124,18 +124,26 @@ function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter,
       // the typed keyword. Chains like "NAYA" should show every nearby
       // branch sorted by distance, the way Google Maps does it — not a
       // single "See locations" placeholder.
+      // BUT: nearbySearch's keyword param does loose token / prefix
+      // matching across name + vicinity, so "naya" in Sacramento returns
+      // "NA" (Narcotics Anonymous), "Cal-Na Bindery", "MEE NA SONG MD",
+      // etc. — none of which are what the user wants. Post-filter by
+      // requiring the place name to literally contain the query string
+      // as a substring (case-insensitive). When the chain doesn't exist
+      // nearby this empties the list and the autocomplete predictions
+      // take over the dropdown.
       if (placesRef.current && userLat && userLng && cleaned.length >= 2) {
         const center = new window.google.maps.LatLng(userLat, userLng);
+        const queryLc = cleaned.toLowerCase();
         placesRef.current.nearbySearch({
           location: center,
           rankBy: window.google.maps.places.RankBy.DISTANCE,
           keyword: cleaned,
         }, (results, status) => {
           if (status === window.google.maps.places.PlacesServiceStatus.OK && Array.isArray(results)) {
-            // Compute distance client-side (nearbySearch doesn't ship it)
-            // and keep only places with a real geometry.
             const enriched = results
               .filter(r => r.place_id && r.geometry?.location)
+              .filter(r => (r.name || "").toLowerCase().includes(queryLc))
               .map(r => ({
                 place_id: r.place_id,
                 name: r.name || "",
