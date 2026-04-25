@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 
 const API = import.meta.env?.VITE_BACKEND_URL || "https://street-park-info-backend.onrender.com";
 const GOOGLE_KEY = import.meta.env?.VITE_GOOGLE_MAPS_KEY || "";
@@ -175,10 +175,14 @@ function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter,
   }, [onPlaceSelect]);
 
   // Merge nearbySearch businesses + autocomplete predictions into one
-  // distance-sorted list. Dedupe by place_id. Nearby business hits always
-  // carry a real distance; autocomplete predictions carry distance_meters
-  // only when origin was provided. Entries without distance fall to the end.
-  const mergedItems = (() => {
+  // distance-sorted list. Dedupe by place_id. Memoized so the array
+  // reference is stable across renders — without this, the effect that
+  // bubbles results to the parent fires on every render, drives a
+  // setState round-trip, and re-renders this component, which produces
+  // a new mergedItems reference, repeating forever. The infinite-render
+  // loop manifested as a flickering dropdown that sometimes failed to
+  // appear at all.
+  const mergedItems = useMemo(() => {
     const seen = new Set();
     const out = [];
     const push = (item) => {
@@ -211,7 +215,7 @@ function PlacesInput({ value, onChange, onPlaceSelect, onFocus, onBlur, onEnter,
       return a.distance_meters - b.distance_meters;
     });
     return out.slice(0, 7);
-  })();
+  }, [nearbyBusinesses, predictions]);
 
   const showPredictions = focused && mergedItems.length > 0;
   const showGpsHint = focused && showDropdown && mergedItems.length === 0;
